@@ -1,6 +1,7 @@
 use drm_fourcc::DrmFourcc;
 use hbm::{Format, Usage};
 
+#[cfg(feature = "drm")]
 fn main() {
     let drm = hbm::drm_kms::Builder::new()
         .node_path("/dev/dri/card0")
@@ -23,4 +24,9 @@ fn main() {
 
     let bo_extent = hbm::Extent::new_2d(256, 256);
     let _bo = hbm::Bo::new(dev.clone(), &bo_class, bo_extent, None).unwrap();
+}
+
+#[cfg(not(feature = "drm"))]
+fn main() {
+    println!("drm feature disabled");
 }

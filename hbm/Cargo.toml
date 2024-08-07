@@ -12,13 +12,17 @@ categories.workspace = true
 [dependencies]
 ash.workspace = true
 bitflags.workspace = true
-drm.workspace = true
+drm = { workspace = true, optional = true }
 log.workspace = true
 nix.workspace = true
 thiserror.workspace = true
 
 [dev-dependencies]
 drm-fourcc.workspace = true
+
+[features]
+default = ["drm"]
+drm = ["dep:drm"]
 
 [lints]
 workspace = true

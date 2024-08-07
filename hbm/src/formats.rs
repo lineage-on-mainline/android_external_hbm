@@ -205,6 +205,7 @@ fn format_class(format: Format) -> Result<&'static FormatClass> {
     Ok(format_class)
 }
 
+#[cfg(feature = "drm")]
 pub fn bpp(format: Format) -> Result<u32> {
     let format_class = format_class(format)?;
     let bs = format_class.block_size.iter().sum::<u8>() as u32;

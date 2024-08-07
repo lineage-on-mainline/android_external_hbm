@@ -291,6 +291,7 @@ pub use udmabuf::{udmabuf_alloc, udmabuf_exists, udmabuf_open};
 //   $ bindgen --no-doc-comments --no-layout-tests \
 //       --allowlist-item '(drm|DRM)_.*' \
 //       /usr/include/drm/drm_mode.h
+#[cfg(feature = "drm")]
 mod drm {
     use super::*;
     use std::path::PathBuf;
@@ -425,4 +426,5 @@ mod drm {
     }
 }
 
+#[cfg(feature = "drm")]
 pub use drm::{drm_exists, drm_parse_in_formats_blob, drm_scan_primary};

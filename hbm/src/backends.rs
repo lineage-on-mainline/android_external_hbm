@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 pub mod dma_heap;
+#[cfg(feature = "drm")]
 pub mod drm_kms;
 pub mod udmabuf;
 pub mod vulkan;
@@ -71,6 +72,7 @@ pub enum Usage {
     #[default]
     Unused,
     Default,
+    #[cfg(feature = "drm")]
     DrmKms(drm_kms::Usage),
     Vulkan(vulkan::Usage),
 }

@@ -2,6 +2,7 @@ use drm_fourcc::{DrmFourcc, DrmModifier};
 use hbm::{Flags, Format, Usage};
 use std::slice;
 
+#[cfg(feature = "drm")]
 fn main() {
     let backend = hbm::drm_kms::Builder::new()
         .node_path("/dev/dri/card0")
@@ -53,4 +54,9 @@ fn main() {
     bo.wait(hbm::Access::Read).unwrap();
     bo.sync(hbm::Access::ReadWrite, true).unwrap();
     bo.sync(hbm::Access::ReadWrite, false).unwrap();
+}
+
+#[cfg(not(feature = "drm"))]
+fn main() {
+    println!("drm feature disabled");
 }
