@@ -1,0 +1,28 @@
+[workspace]
+members = ["hbm", "hbm-minigbm", "hbm-gralloc"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+authors = ["Chia-I Wu"]
+edition = "2021"
+repository = "https://gitlab.freedesktop.org/olv/hbm"
+license = "MIT"
+keywords = ["graphics", "gbm", "minigbm", "gralloc"]
+categories = ["hardware-support", "graphics", "multimedia"]
+
+[workspace.dependencies]
+ash = "0.38"
+bitflags = "2"
+cbindgen = "0.24"
+drm = "0.12"
+drm-fourcc = "2"
+hbm = { path = "hbm" }
+libc = "0.2"
+log = "0.4"
+nix = { version = "0.28", features = ["fs", "ioctl", "mman", "poll"] }
+thiserror = "1"
+
+[workspace.lints.clippy]
+multiple_unsafe_ops_per_block = "deny"
+undocumented_unsafe_blocks = "deny"

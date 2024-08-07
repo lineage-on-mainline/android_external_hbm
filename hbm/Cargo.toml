@@ -1,0 +1,24 @@
+[package]
+name = "hbm"
+description = "A hardware buffer allocator"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[dependencies]
+ash.workspace = true
+bitflags.workspace = true
+drm.workspace = true
+log.workspace = true
+nix.workspace = true
+thiserror.workspace = true
+
+[dev-dependencies]
+drm-fourcc.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,28 @@
+[package]
+name = "hbm-minigbm"
+description = "An unstable HBM C API for minigbm drivers"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+libc.workspace = true
+log.workspace = true
+hbm.workspace = true
+
+[build-dependencies]
+cbindgen.workspace = true
+
+[features]
+default = ["capi"]
+capi = []
+
+[lints]
+workspace = true

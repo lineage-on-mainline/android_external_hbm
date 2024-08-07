@@ -1,0 +1,62 @@
+rust_defaults {
+    name: "hbm_defaults",
+    edition: "2021",
+    vendor: true,
+}
+
+rust_library {
+    name: "libhbm",
+    crate_name: "hbm",
+    crate_root: "hbm/src/lib.rs",
+    defaults: [
+        "hbm_defaults",
+    ],
+    rustlibs: [
+        "libash_rust",
+        "libbitflags",
+        "libdrm_rust",
+        "liblog_rust",
+        "libnix",
+        "libthiserror",
+    ],
+}
+
+rust_binary {
+    name: "android.hardware.graphics.allocator-service.hbm",
+    crate_name: "hbm_gralloc",
+    crate_root: "hbm-gralloc/src/main.rs",
+    defaults: [
+        "hbm_defaults",
+    ],
+    // TODO update hardware/interfaces/graphics/allocator/aidl/Android.bp
+    rustlibs: [
+        "libhbm",
+    ],
+    relative_install_path: "hw",
+    init_rc: ["hbm-gralloc/data/android.hardware.graphics.allocator-service.hbm.rc"],
+    vintf_fragments: ["hbm-gralloc/data/android.hardware.graphics.allocator-service.hbm.xml"],
+}
+
+rust_ffi_static {
+    name: "libhbm_gralloc_mapper",
+    crate_name: "hbm_gralloc",
+    crate_root: "hbm-gralloc/src/lib.rs",
+    defaults: [
+        "hbm_defaults",
+    ],
+    rustlibs: [
+        "libhbm",
+        "libimapper_stablec_bindgen",
+    ],
+}
+
+cc_library_shared {
+    name: "mapper.hbm",
+    static_libs: ["libhbm_gralloc_mapper"],
+    vendor: true,
+    vintf_fragments: ["hbm-gralloc/data/android.hardware.graphics.mapper.hbm.xml"],
+    // pull in AIMapper_loadIMapper
+    ldflags: [
+        "-Wl,--undefined=AIMapper_loadIMapper",
+    ],
+}

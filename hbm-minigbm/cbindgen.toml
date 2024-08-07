@@ -1,0 +1,6 @@
+header = "// Copyright 2024 Google LLC\n// SPDX-License-Identifier: MIT"
+sys_includes = ["sys/types.h"]
+include_guard = "HBM_MINIGBM_H"
+include_version = true
+language = "C"
+cpp_compat = true

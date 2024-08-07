@@ -1,0 +1,23 @@
+[package]
+name = "hbm-gralloc"
+description = "An Android gralloc implementation based on HBM"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords.workspace = true
+categories.workspace = true
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+hbm.workspace = true
+
+[features]
+default = ["builtin-imapper-stablec-bindgen"]
+builtin-imapper-stablec-bindgen = []
+
+[lints]
+workspace = true
