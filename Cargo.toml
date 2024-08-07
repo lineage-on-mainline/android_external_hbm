@@ -3,7 +3,7 @@ members = ["hbm", "hbm-minigbm", "hbm-gralloc"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Chia-I Wu"]
 edition = "2021"
 repository = "https://gitlab.freedesktop.org/olv/hbm"
@@ -17,7 +17,7 @@ bitflags = "2"
 cbindgen = "0.24"
 drm = "0.12"
 drm-fourcc = "2"
-hbm = { path = "hbm" }
+hbm = { version = "0.1.1", path = "hbm" }
 libc = "0.2"
 log = "0.4"
 nix = { version = "0.28", features = ["fs", "ioctl", "mman", "poll"] }
