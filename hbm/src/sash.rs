@@ -1188,6 +1188,7 @@ impl CommandPool {
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
+        // SAFETY: ok
         unsafe { dev.handle.begin_command_buffer(cmd, &begin_info) }.map_err(Error::from)
     }
 
@@ -1224,6 +1225,7 @@ impl CommandPool {
         let mut pools = self.pools.lock().unwrap();
 
         for (_, (pool, _)) in pools.drain() {
+            // SAFETY: ok
             unsafe {
                 dev.handle.destroy_command_pool(pool, None);
             }
