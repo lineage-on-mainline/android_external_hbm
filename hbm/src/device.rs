@@ -84,6 +84,16 @@ impl Device {
 
         Ok(class)
     }
+
+    pub fn modifiers<'a>(&self, class: &'a Class) -> Option<&'a Vec<Modifier>> {
+        // MOD_INVALID indicates an implicit modifier internally, but it means there is no modifier
+        // support to users
+        if class.modifiers.iter().any(|m| m.is_invalid()) {
+            None
+        } else {
+            Some(&class.modifiers)
+        }
+    }
 }
 
 #[derive(Default)]
