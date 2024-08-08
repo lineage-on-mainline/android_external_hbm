@@ -212,6 +212,11 @@ pub fn bpp(format: Format) -> Result<u32> {
     Ok(bs * 8)
 }
 
+pub fn plane_count(format: Format) -> Result<u32> {
+    let format_class = format_class(format)?;
+    Ok(format_class.plane_count as u32)
+}
+
 pub fn packed_layout(
     format: Format,
     width: u32,

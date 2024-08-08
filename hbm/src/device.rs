@@ -94,6 +94,14 @@ impl Device {
             Some(&class.modifiers)
         }
     }
+
+    pub fn modifier_plane_count(&self, class: &Class, modifier: Modifier) -> Result<u32> {
+        if modifier.is_invalid() || !class.modifiers.iter().any(|&m| m == modifier) {
+            return Err(Error::InvalidParam);
+        }
+
+        Ok(self.backends[class.backend_index].modifier_plane_count(class, modifier))
+    }
 }
 
 #[derive(Default)]

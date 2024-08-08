@@ -451,6 +451,11 @@ pub trait Backend: Send + Sync {
         Ok(class)
     }
 
+    fn modifier_plane_count(&self, class: &Class, modifier: Modifier) -> u32 {
+        assert!(modifier.is_linear());
+        formats::plane_count(class.description.format).unwrap()
+    }
+
     fn allocate(
         &self,
         _class: &Class,

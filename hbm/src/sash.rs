@@ -433,8 +433,8 @@ impl PhysicalDevice {
     }
 
     fn probe_formats(&mut self) -> Result<()> {
-        for (fmt, plane_count) in formats::enumerate_vk() {
-            let mods = self.get_format_properties(fmt, plane_count as u32);
+        for (fmt, format_plane_count) in formats::enumerate_vk() {
+            let mods = self.get_format_properties(fmt, format_plane_count as u32);
             self.properties.formats.insert(fmt, mods);
         }
 
@@ -823,6 +823,20 @@ impl Device {
         Ok(props)
     }
 
+    pub fn memory_plane_count(&self, format: vk::Format, modifier: Modifier) -> u32 {
+        // format and modifier must be valid (as returned by image_properties)
+        self.properties().formats[&format]
+            .iter()
+            .find_map(|mod_props| {
+                if mod_props.drm_format_modifier == modifier.0 {
+                    Some(mod_props.drm_format_modifier_plane_count)
+                } else {
+                    None
+                }
+            })
+            .unwrap()
+    }
+
     fn get_image_subresource_aspect(
         &self,
         tiling: vk::ImageTiling,
@@ -873,20 +887,13 @@ impl Device {
             _ => return Err(Error::NoSupport),
         };
 
-        let plane_count = self.properties().formats[&format]
-            .iter()
-            .find_map(|mod_props| {
-                if mod_props.drm_format_modifier == modifier.0 {
-                    Some(mod_props.drm_format_modifier_plane_count)
-                } else {
-                    None
-                }
-            })
-            .unwrap();
+        let mem_plane_count = self.memory_plane_count(format, modifier);
 
         // note that size is not set here
-        let mut layout = Layout::new().modifier(modifier).plane_count(plane_count);
-        for plane in 0..plane_count {
+        let mut layout = Layout::new()
+            .modifier(modifier)
+            .plane_count(mem_plane_count);
+        for plane in 0..mem_plane_count {
             let aspect = self.get_image_subresource_aspect(tiling, plane)?;
             let subres = vk::ImageSubresource::default().aspect_mask(aspect);
 
