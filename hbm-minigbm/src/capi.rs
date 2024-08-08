@@ -265,6 +265,51 @@ fn device_get_class<'a>(
 
 /// # Safety
 #[no_mangle]
+pub unsafe extern "C" fn hbm_device_get_modifiers(
+    dev: *mut hbm_device,
+    desc: *const hbm_description,
+    out_mods: *mut u64,
+    out_plane_counts: *mut u32,
+) -> i32 {
+    let dev = device_as_mut(dev);
+    let desc = description_from(desc);
+
+    // TODO is it possible to reduce lock scope?
+    let mut classes = dev.classes.lock().unwrap();
+    let class = match device_get_class(&dev.device, &mut classes, desc) {
+        Ok(class) => class,
+        _ => return -1,
+    };
+
+    let mods = match dev.device.modifiers(class) {
+        Some(mods) => mods,
+        None => return 0,
+    };
+
+    if !out_mods.is_null() {
+        // SAFETY: valid by contract
+        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mods.len()) };
+
+        for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
+            *dst = src.0;
+        }
+
+        if !out_plane_counts.is_null() {
+            // SAFETY: valid by contract
+            let out_plane_counts =
+                unsafe { slice::from_raw_parts_mut(out_plane_counts, mods.len()) };
+
+            for (idx, modifier) in mods.iter().enumerate() {
+                out_plane_counts[idx] = dev.device.modifier_plane_count(class, *modifier).unwrap();
+            }
+        }
+    }
+
+    mods.len() as i32
+}
+
+/// # Safety
+#[no_mangle]
 pub unsafe extern "C" fn hbm_bo_create(
     dev: *mut hbm_device,
     desc: *const hbm_description,
@@ -276,7 +321,6 @@ pub unsafe extern "C" fn hbm_bo_create(
     let extent = extent_from(extent);
     let con = constraint_from(con);
 
-    // TODO is it possible to reduce lock scope?
     let mut classes = dev.classes.lock().unwrap();
     let class = match device_get_class(&dev.device, &mut classes, desc) {
         Ok(class) => class,
