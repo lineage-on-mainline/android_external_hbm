@@ -22,7 +22,10 @@ than via cargo.
 
   - quirk device and quirks
   - thread safety
-  - error handling
+  - error reporting
+  - robustness
+  - device lost
+  - `no_std`
   - cleanups
   - docs
 
