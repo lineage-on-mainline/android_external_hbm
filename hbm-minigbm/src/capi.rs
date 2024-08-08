@@ -247,6 +247,22 @@ fn device_classify(dev: &hbm::Device, desc: &hbm_description) -> Result<hbm::Cla
     dev.classify(desc, slice::from_ref(&usage))
 }
 
+fn device_get_class<'a>(
+    dev: &hbm::Device,
+    classes: &'a mut HashMap<hbm_description, hbm::Class>,
+    desc: hbm_description,
+) -> Result<&'a hbm::Class, hbm::Error> {
+    let class: &hbm::Class = match classes.entry(desc) {
+        Entry::Occupied(e) => e.into_mut(),
+        Entry::Vacant(e) => {
+            let class = device_classify(dev, e.key())?;
+            e.insert(class)
+        }
+    };
+
+    Ok(class)
+}
+
 /// # Safety
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_create(
@@ -260,17 +276,11 @@ pub unsafe extern "C" fn hbm_bo_create(
     let extent = extent_from(extent);
     let con = constraint_from(con);
 
-    // TODO reduce lock scope and avoid copy-n-paste
+    // TODO is it possible to reduce lock scope?
     let mut classes = dev.classes.lock().unwrap();
-    let class: &hbm::Class = match classes.entry(desc) {
-        Entry::Occupied(e) => e.into_mut(),
-        Entry::Vacant(e) => {
-            let class = match device_classify(&dev.device, e.key()) {
-                Ok(class) => class,
-                _ => return ptr::null_mut(),
-            };
-            e.insert(class)
-        }
+    let class = match device_get_class(&dev.device, &mut classes, desc) {
+        Ok(class) => class,
+        _ => return ptr::null_mut(),
     };
 
     let bo = match hbm::Bo::new(dev.device.clone(), class, extent, con) {
@@ -297,17 +307,10 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
     let dmabuf = dmabuf_from(dmabuf);
     let layout = layout_from(layout);
 
-    // TODO reduce lock scope and avoid copy-n-paste
     let mut classes = dev.classes.lock().unwrap();
-    let class: &hbm::Class = match classes.entry(desc) {
-        Entry::Occupied(e) => e.into_mut(),
-        Entry::Vacant(e) => {
-            let class = match device_classify(&dev.device, e.key()) {
-                Ok(class) => class,
-                _ => return ptr::null_mut(),
-            };
-            e.insert(class)
-        }
+    let class = match device_get_class(&dev.device, &mut classes, desc) {
+        Ok(class) => class,
+        _ => return ptr::null_mut(),
     };
 
     let bo = match hbm::Bo::with_dma_buf(dev.device.clone(), class, extent, dmabuf, layout) {
