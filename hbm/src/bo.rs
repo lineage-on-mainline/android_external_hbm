@@ -92,9 +92,13 @@ impl Bo {
         self.device.backends[self.handle.backend_index].as_ref()
     }
 
-    pub fn export_dma_buf(&self, name: Option<&str>) -> Result<(OwnedFd, Layout)> {
+    pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
         // TODO this can race with map/unmap
         self.backend().export_dma_buf(&self.handle, name)
+    }
+
+    pub fn layout(&self) -> Result<Layout> {
+        self.backend().layout(&self.handle)
     }
 
     pub fn map(&mut self) -> Result<Mapping> {

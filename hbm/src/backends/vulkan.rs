@@ -252,23 +252,6 @@ impl super::Backend for Backend {
         Ok(handle)
     }
 
-    fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<(OwnedFd, Layout)> {
-        let mem = get_memory(handle)?;
-
-        let dmabuf = mem.export_dma_buf()?;
-        let layout = match &handle.payload {
-            HandlePayload::Buffer(buf) => buf.layout(),
-            HandlePayload::Image(img) => img.layout(),
-            _ => Err(Error::InvalidParam),
-        }?;
-
-        if let Some(name) = name {
-            let _ = utils::dma_buf_set_name(&dmabuf, name);
-        }
-
-        Ok((dmabuf, layout))
-    }
-
     fn import_dma_buf(
         &self,
         class: &Class,
@@ -306,6 +289,27 @@ impl super::Backend for Backend {
         };
 
         Ok(handle)
+    }
+
+    fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
+        let mem = get_memory(handle)?;
+        let dmabuf = mem.export_dma_buf()?;
+
+        if let Some(name) = name {
+            let _ = utils::dma_buf_set_name(&dmabuf, name);
+        }
+
+        Ok(dmabuf)
+    }
+
+    fn layout(&self, handle: &Handle) -> Result<Layout> {
+        let layout = match &handle.payload {
+            HandlePayload::Buffer(buf) => buf.layout(),
+            HandlePayload::Image(img) => img.layout(),
+            _ => Err(Error::InvalidParam),
+        }?;
+
+        Ok(layout)
     }
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {

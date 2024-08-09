@@ -391,18 +391,27 @@ pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
 
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn hbm_bo_export_dma_buf(
-    bo: *mut hbm_bo,
-    name: *const ffi::c_char,
-    out_layout: *mut hbm_layout,
-) -> i32 {
+pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
     let bo = bo_as_ref(bo);
     let name = str_as_ref(name);
-    let out_layout = layout_as_mut(out_layout);
 
-    let (dmabuf, layout) = match bo.export_dma_buf(name) {
+    let dmabuf = match bo.export_dma_buf(name) {
         Ok(v) => v,
         _ => return -1,
+    };
+
+    dmabuf_into(dmabuf)
+}
+
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_layout) -> bool {
+    let bo = bo_as_ref(bo);
+    let out_layout = layout_as_mut(out_layout);
+
+    let layout = match bo.layout() {
+        Ok(v) => v,
+        _ => return false,
     };
 
     out_layout.size = layout.size;
@@ -411,7 +420,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(
     out_layout.offsets = layout.offsets;
     out_layout.strides = layout.strides;
 
-    dmabuf_into(dmabuf)
+    true
 }
 
 /// # Safety

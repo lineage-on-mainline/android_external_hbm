@@ -24,21 +24,6 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
     Ok(class)
 }
 
-pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<(OwnedFd, Layout)> {
-    let (dmabuf, layout) = match &handle.payload {
-        HandlePayload::DmaBuf(v) => v,
-        _ => return Err(Error::NoSupport),
-    };
-
-    if let Some(name) = name {
-        let _ = utils::dma_buf_set_name(dmabuf, name);
-    }
-
-    let dmabuf = dmabuf.try_clone().map_err(Error::from)?;
-
-    Ok((dmabuf, *layout))
-}
-
 pub fn import_dma_buf(
     class: &Class,
     extent: Extent,
@@ -60,6 +45,30 @@ pub fn import_dma_buf(
 
     let handle = Handle::with_dma_buf(dmabuf, layout);
     Ok(handle)
+}
+
+pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
+    let (dmabuf, _) = match &handle.payload {
+        HandlePayload::DmaBuf(v) => v,
+        _ => return Err(Error::NoSupport),
+    };
+
+    if let Some(name) = name {
+        let _ = utils::dma_buf_set_name(dmabuf, name);
+    }
+
+    let dmabuf = dmabuf.try_clone().map_err(Error::from)?;
+
+    Ok(dmabuf)
+}
+
+pub fn layout(handle: &Handle) -> Result<Layout> {
+    let (_, layout) = match &handle.payload {
+        HandlePayload::DmaBuf(v) => v,
+        _ => return Err(Error::NoSupport),
+    };
+
+    Ok(*layout)
 }
 
 pub fn map(handle: &Handle) -> Result<Mapping> {

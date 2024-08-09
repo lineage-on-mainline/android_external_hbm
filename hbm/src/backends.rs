@@ -463,12 +463,6 @@ pub trait Backend: Send + Sync {
         Err(Error::NoSupport)
     }
 
-    fn free(&self, _handle: &Handle) {}
-
-    fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<(OwnedFd, Layout)> {
-        dma_buf::export_dma_buf(handle, name)
-    }
-
     fn import_dma_buf(
         &self,
         class: &Class,
@@ -477,6 +471,16 @@ pub trait Backend: Send + Sync {
         layout: Layout,
     ) -> Result<Handle> {
         dma_buf::import_dma_buf(class, extent, dmabuf, layout)
+    }
+
+    fn free(&self, _handle: &Handle) {}
+
+    fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
+        dma_buf::export_dma_buf(handle, name)
+    }
+
+    fn layout(&self, handle: &Handle) -> Result<Layout> {
+        dma_buf::layout(handle)
     }
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {
