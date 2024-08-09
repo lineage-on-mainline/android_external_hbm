@@ -63,6 +63,9 @@ pub struct hbm_constraint {
     offset_align: u64,
     stride_align: u64,
     size_align: u64,
+
+    modifiers: *const u64,
+    modifier_count: u32,
 }
 
 #[repr(C)]
@@ -114,11 +117,18 @@ fn constraint_from(con: *const hbm_constraint) -> Option<hbm::Constraint> {
 
     // SAFETY: con is valid by contract
     let con = unsafe { &*con };
+    // SAFETY: modifiers is valid by contract
+    let modifiers = unsafe { slice::from_raw_parts(con.modifiers, con.modifier_count as usize) };
 
-    let con = hbm::Constraint::new()
+    let mut con = hbm::Constraint::new()
         .offset_align(con.offset_align)
         .stride_align(con.stride_align)
         .size_align(con.size_align);
+    if !modifiers.is_empty() {
+        let modifiers: Vec<hbm::Modifier> =
+            modifiers.iter().copied().map(hbm::Modifier::from).collect();
+        con = con.modifiers(modifiers);
+    }
 
     Some(con)
 }

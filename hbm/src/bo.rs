@@ -38,11 +38,11 @@ impl Bo {
 
         let con = if con.is_some() && class.constraint.is_some() {
             con.map(|mut c| {
-                c.merge(class.constraint.unwrap());
+                c.merge(class.constraint.clone().unwrap());
                 c
             })
         } else {
-            con.or(class.constraint)
+            con.or(class.constraint.clone())
         };
 
         let backend = &device.backends[class.backend_index];

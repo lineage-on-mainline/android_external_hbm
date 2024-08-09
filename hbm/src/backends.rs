@@ -134,11 +134,13 @@ impl Extent {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Debug)]
 pub struct Constraint {
     pub(crate) offset_align: Size,
     pub(crate) stride_align: Size,
     pub(crate) size_align: Size,
+
+    pub(crate) modifiers: Vec<Modifier>,
 }
 
 impl Default for Constraint {
@@ -147,6 +149,7 @@ impl Default for Constraint {
             offset_align: 1,
             stride_align: 1,
             size_align: 1,
+            modifiers: Default::default(),
         }
     }
 }
@@ -177,6 +180,11 @@ impl Constraint {
         self
     }
 
+    pub fn modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
+        self.modifiers = modifiers;
+        self
+    }
+
     fn to_tuple(self) -> (Size, Size, Size) {
         (self.offset_align, self.stride_align, self.size_align)
     }
@@ -195,6 +203,11 @@ impl Constraint {
         if self.size_align < other.size_align {
             assert_eq!(other.size_align % self.size_align, 0);
             self.size_align = other.size_align;
+        }
+
+        if !other.modifiers.is_empty() {
+            assert!(self.modifiers.is_empty());
+            self.modifiers = other.modifiers;
         }
     }
 

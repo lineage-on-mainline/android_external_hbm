@@ -218,13 +218,31 @@ impl super::Backend for Backend {
         } else {
             let img_info = get_image_info(class.description, class.usage)?;
             let mem_info = get_memory_info(class.description);
+
+            let mut modifiers = &class.modifiers;
+            let filtered_modifiers: Vec<Modifier>;
+            if let Some(con) = &con {
+                if !con.modifiers.is_empty() {
+                    filtered_modifiers = modifiers
+                        .iter()
+                        .filter(|&m1| con.modifiers.iter().any(|m2| m2 == m1))
+                        .copied()
+                        .collect();
+                    if filtered_modifiers.is_empty() {
+                        return Err(Error::NoSupport);
+                    }
+
+                    modifiers = &filtered_modifiers;
+                }
+            }
+
             let img = sash::Image::new(
                 self.device.clone(),
                 img_info,
                 mem_info,
                 extent.width(),
                 extent.height(),
-                &class.modifiers,
+                &modifiers,
                 con,
             )?;
 
