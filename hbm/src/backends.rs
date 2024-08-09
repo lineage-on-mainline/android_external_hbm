@@ -7,10 +7,10 @@ pub mod drm_kms;
 pub mod udmabuf;
 pub mod vulkan;
 
+use super::dma_buf;
 use super::formats;
 use super::sash;
 use super::types::{Access, Error, Format, Mapping, Modifier, Result, Size};
-use super::utils;
 use std::os::fd::OwnedFd;
 
 bitflags::bitflags! {
@@ -438,21 +438,7 @@ pub trait Backend: Send + Sync {
     }
 
     fn classify(&self, desc: Description, usage: Usage) -> Result<Class> {
-        if !desc.is_buffer() && !desc.modifier.is_linear() {
-            return Err(Error::NoSupport);
-        }
-
-        let unsupported_flags = Flags::COHERENT | Flags::PROTECTED;
-        if desc.flags.intersects(unsupported_flags) {
-            return Err(Error::NoSupport);
-        }
-
-        let class = Class::new(desc)
-            .usage(usage)
-            .max_extent(Extent::max())
-            .modifiers(vec![desc.modifier]);
-
-        Ok(class)
+        dma_buf::classify(desc, usage)
     }
 
     fn allocate(
@@ -467,18 +453,7 @@ pub trait Backend: Send + Sync {
     fn free(&self, _handle: &Handle) {}
 
     fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<(OwnedFd, Layout)> {
-        let (dmabuf, layout) = match &handle.payload {
-            HandlePayload::DmaBuf(v) => v,
-            _ => return Err(Error::NoSupport),
-        };
-
-        if let Some(name) = name {
-            let _ = utils::dma_buf_set_name(dmabuf, name);
-        }
-
-        let dmabuf = dmabuf.try_clone().map_err(Error::from)?;
-
-        Ok((dmabuf, *layout))
+        dma_buf::export_dma_buf(handle, name)
     }
 
     fn import_dma_buf(
@@ -488,37 +463,15 @@ pub trait Backend: Send + Sync {
         dmabuf: OwnedFd,
         layout: Layout,
     ) -> Result<Handle> {
-        let packed = Layout::packed(class, extent, None)?;
-        if packed.size > layout.size
-            || packed.modifier != layout.modifier
-            || packed.plane_count != layout.plane_count
-        {
-            return Err(Error::InvalidParam);
-        }
-
-        let size = utils::seek_end(&dmabuf)?;
-        if size < layout.size {
-            return Err(Error::InvalidParam);
-        }
-
-        let handle = Handle::with_dma_buf(dmabuf, layout);
-        Ok(handle)
+        dma_buf::import_dma_buf(class, extent, dmabuf, layout)
     }
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {
-        let (dmabuf, _) = match &handle.payload {
-            HandlePayload::DmaBuf(v) => v,
-            _ => return Err(Error::NoSupport),
-        };
-
-        let len = utils::seek_end(dmabuf)?;
-        let mapping = utils::mmap(dmabuf, len, Access::ReadWrite)?;
-
-        Ok(mapping)
+        dma_buf::map(handle)
     }
 
-    fn unmap(&self, _handle: &Handle, mapping: Mapping) {
-        let _ = utils::munmap(mapping);
+    fn unmap(&self, handle: &Handle, mapping: Mapping) {
+        dma_buf::unmap(handle, mapping)
     }
 
     fn flush(&self, _handle: &Handle) -> Result<()> {
@@ -529,26 +482,12 @@ pub trait Backend: Send + Sync {
         Err(Error::NoSupport)
     }
 
-    // TODO DMA_BUF_IOCTL_EXPORT_SYNC_FILE
-    // TODO DMA_BUF_IOCTL_IMPORT_SYNC_FILE
     fn wait(&self, handle: &Handle, access: Access) -> Result<()> {
-        let (dmabuf, _) = match &handle.payload {
-            HandlePayload::DmaBuf(v) => v,
-            _ => return Err(Error::NoSupport),
-        };
-
-        utils::poll(dmabuf, access).and(Ok(()))
+        dma_buf::wait(handle, access)
     }
 
-    /// When start is true, this transfers ownership to cpu.  It implies wait and cache invalidate.
-    /// When start is false, this transfers ownership to device.  It implies cache flush.
     fn sync(&self, handle: &Handle, access: Access, start: bool) -> Result<()> {
-        let (dmabuf, _) = match &handle.payload {
-            HandlePayload::DmaBuf(v) => v,
-            _ => return Err(Error::NoSupport),
-        };
-
-        utils::dma_buf_sync(dmabuf, access, start)
+        dma_buf::sync(handle, access, start)
     }
 
     fn copy_buffer(

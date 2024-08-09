@@ -4,6 +4,7 @@
 mod backends;
 mod bo;
 mod device;
+mod dma_buf;
 mod formats;
 mod sash;
 mod types;
