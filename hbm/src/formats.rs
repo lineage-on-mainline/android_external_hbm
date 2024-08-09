@@ -212,8 +212,8 @@ pub fn bpp(format: Format) -> Result<u32> {
     Ok(bs * 8)
 }
 
-pub fn plane_count(format: Format) -> Result<u32> {
-    let format_class = format_class(format)?;
+pub fn plane_count(fmt: Format) -> Result<u32> {
+    let format_class = format_class(fmt)?;
     Ok(format_class.plane_count as u32)
 }
 

@@ -206,6 +206,24 @@ pub unsafe extern "C" fn hbm_device_destroy(dev: *mut hbm_device) {
     let _ = device_from(dev);
 }
 
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn hbm_device_get_plane_count(
+    dev: *mut hbm_device,
+    fmt: u32,
+    modifier: u64,
+) -> u32 {
+    let dev = device_as_mut(dev);
+
+    match dev
+        .device
+        .plane_count(hbm::Format(fmt), hbm::Modifier(modifier))
+    {
+        Ok(count) => count,
+        _ => 0,
+    }
+}
+
 fn device_classify(dev: &hbm::Device, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
     let mut flags = hbm::Flags::empty();
     if (desc.flags & HBM_FLAGS_MAPPABLE) > 0 {
@@ -269,7 +287,6 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     dev: *mut hbm_device,
     desc: *const hbm_description,
     out_mods: *mut u64,
-    out_plane_counts: *mut u32,
 ) -> i32 {
     let dev = device_as_mut(dev);
     let desc = description_from(desc);
@@ -292,16 +309,6 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
 
         for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
             *dst = src.0;
-        }
-
-        if !out_plane_counts.is_null() {
-            // SAFETY: valid by contract
-            let out_plane_counts =
-                unsafe { slice::from_raw_parts_mut(out_plane_counts, mods.len()) };
-
-            for (idx, modifier) in mods.iter().enumerate() {
-                out_plane_counts[idx] = dev.device.modifier_plane_count(class, *modifier).unwrap();
-            }
         }
     }
 

@@ -433,6 +433,10 @@ pub struct CopyBufferImage {
 }
 
 pub trait Backend: Send + Sync {
+    fn plane_count(&self, _fmt: Format, _modifier: Modifier) -> Result<u32> {
+        Err(Error::NoSupport)
+    }
+
     fn classify(&self, desc: Description, usage: Usage) -> Result<Class> {
         if !desc.is_buffer() && !desc.modifier.is_linear() {
             return Err(Error::NoSupport);
@@ -449,11 +453,6 @@ pub trait Backend: Send + Sync {
             .modifiers(vec![desc.modifier]);
 
         Ok(class)
-    }
-
-    fn modifier_plane_count(&self, class: &Class, modifier: Modifier) -> u32 {
-        assert!(modifier.is_linear());
-        formats::plane_count(class.description.format).unwrap()
     }
 
     fn allocate(

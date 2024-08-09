@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{Backend, Class, Constraint, Description, Extent, Usage};
-use super::types::{Error, Modifier, Result};
+use super::formats;
+use super::types::{Error, Format, Modifier, Result};
 use std::collections::HashSet;
 use std::sync::Arc;
 
@@ -11,6 +12,24 @@ pub struct Device {
 }
 
 impl Device {
+    pub fn plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
+        if fmt.is_invalid() || modifier.is_invalid() {
+            return Err(Error::InvalidParam);
+        }
+
+        if modifier.is_linear() {
+            return formats::plane_count(fmt);
+        }
+
+        for backend in &self.backends {
+            if let Ok(count) = backend.plane_count(fmt, modifier) {
+                return Ok(count);
+            }
+        }
+
+        Err(Error::NoSupport)
+    }
+
     pub fn classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
         if !desc.is_valid() {
             return Err(Error::InvalidParam);
@@ -93,14 +112,6 @@ impl Device {
         } else {
             Some(&class.modifiers)
         }
-    }
-
-    pub fn modifier_plane_count(&self, class: &Class, modifier: Modifier) -> Result<u32> {
-        if modifier.is_invalid() || !class.modifiers.iter().any(|&m| m == modifier) {
-            return Err(Error::InvalidParam);
-        }
-
-        Ok(self.backends[class.backend_index].modifier_plane_count(class, modifier))
     }
 }
 

@@ -7,7 +7,7 @@ use super::{
 };
 use crate::formats;
 use crate::sash;
-use crate::types::{Access, Error, Mapping, Modifier, Result};
+use crate::types::{Access, Error, Format, Mapping, Modifier, Result};
 use crate::utils;
 use ash::vk;
 use std::os::fd::OwnedFd;
@@ -181,6 +181,11 @@ impl Backend {
 }
 
 impl super::Backend for Backend {
+    fn plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
+        let (fmt, _) = formats::to_vk(fmt)?;
+        self.device.memory_plane_count(fmt, modifier)
+    }
+
     fn classify(&self, desc: Description, usage: super::Usage) -> Result<Class> {
         let class = if desc.is_buffer() {
             let buf_info = get_buffer_info(desc, usage)?;
@@ -200,11 +205,6 @@ impl super::Backend for Backend {
         };
 
         Ok(class)
-    }
-
-    fn modifier_plane_count(&self, class: &Class, modifier: Modifier) -> u32 {
-        let (format, _) = formats::to_vk(class.description.format).unwrap();
-        self.device.memory_plane_count(format, modifier)
     }
 
     fn allocate(&self, class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {

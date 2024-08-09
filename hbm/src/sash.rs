@@ -609,32 +609,23 @@ impl Device {
         &self.physical_device.properties
     }
 
-    fn find_mt(&self, mt_mask: u32, mem_info: &MemoryInfo) -> Result<u32> {
-        let candidates: Vec<(usize, &vk::MemoryPropertyFlags)> = self
+    pub fn memory_plane_count(&self, fmt: vk::Format, modifier: Modifier) -> Result<u32> {
+        let mod_props_list = self
             .properties()
-            .memory_types
+            .formats
+            .get(&fmt)
+            .ok_or(Error::NoSupport)?;
+
+        mod_props_list
             .iter()
-            .enumerate()
-            .filter(|(mt_idx, mt_flags)| {
-                (mt_mask & (1 << mt_idx)) > 0
-                    && mt_flags.contains(mem_info.required_flags)
-                    && !mt_flags.intersects(mem_info.disallowed_flags)
+            .find_map(|mod_props| {
+                if mod_props.drm_format_modifier == modifier.0 {
+                    Some(mod_props.drm_format_modifier_plane_count)
+                } else {
+                    None
+                }
             })
-            .collect();
-        if candidates.is_empty() {
-            return Err(Error::NoSupport);
-        }
-
-        let mt_idx = if let Some(&(mt_idx, _)) = candidates
-            .iter()
-            .find(|(_, mt_flags)| mt_flags.contains(mem_info.optional_flags))
-        {
-            mt_idx
-        } else {
-            candidates[0].0
-        };
-
-        Ok(mt_idx as u32)
+            .ok_or(Error::NoSupport)
     }
 
     pub fn buffer_properties(&self, buf_info: BufferInfo) -> Result<BufferProperties> {
@@ -823,20 +814,6 @@ impl Device {
         Ok(props)
     }
 
-    pub fn memory_plane_count(&self, format: vk::Format, modifier: Modifier) -> u32 {
-        // format and modifier must be valid (as returned by image_properties)
-        self.properties().formats[&format]
-            .iter()
-            .find_map(|mod_props| {
-                if mod_props.drm_format_modifier == modifier.0 {
-                    Some(mod_props.drm_format_modifier_plane_count)
-                } else {
-                    None
-                }
-            })
-            .unwrap()
-    }
-
     fn get_image_subresource_aspect(
         &self,
         tiling: vk::ImageTiling,
@@ -863,6 +840,34 @@ impl Device {
         Ok(aspect)
     }
 
+    fn find_mt(&self, mt_mask: u32, mem_info: &MemoryInfo) -> Result<u32> {
+        let candidates: Vec<(usize, &vk::MemoryPropertyFlags)> = self
+            .properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .filter(|(mt_idx, mt_flags)| {
+                (mt_mask & (1 << mt_idx)) > 0
+                    && mt_flags.contains(mem_info.required_flags)
+                    && !mt_flags.intersects(mem_info.disallowed_flags)
+            })
+            .collect();
+        if candidates.is_empty() {
+            return Err(Error::NoSupport);
+        }
+
+        let mt_idx = if let Some(&(mt_idx, _)) = candidates
+            .iter()
+            .find(|(_, mt_flags)| mt_flags.contains(mem_info.optional_flags))
+        {
+            mt_idx
+        } else {
+            candidates[0].0
+        };
+
+        Ok(mt_idx as u32)
+    }
+
     fn get_image_layout(
         &self,
         handle: vk::Image,
@@ -887,7 +892,7 @@ impl Device {
             _ => return Err(Error::NoSupport),
         };
 
-        let mem_plane_count = self.memory_plane_count(format, modifier);
+        let mem_plane_count = self.memory_plane_count(format, modifier).unwrap();
 
         // note that size is not set here
         let mut layout = Layout::new()

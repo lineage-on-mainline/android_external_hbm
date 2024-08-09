@@ -97,16 +97,15 @@ test_image(struct hbm_device *dev)
         .modifier = DRM_FORMAT_MOD_LINEAR,
     };
 
-    int mod_count = hbm_device_get_modifiers(dev, &img_desc, NULL, NULL);
+    int mod_count = hbm_device_get_modifiers(dev, &img_desc, NULL);
     if (mod_count < 0)
         die("failed to get image modifiers");
     if (mod_count > 0) {
         uint64_t *mods = malloc(sizeof(*mods) * mod_count);
-        uint32_t *plane_counts = malloc(sizeof(*plane_counts) * mod_count);
-        if (!mods || !plane_counts)
-            die("failed to allocate modifiers/plane_counts");
+        if (!mods)
+            die("failed to allocate modifiers");
 
-        if (hbm_device_get_modifiers(dev, &img_desc, mods, plane_counts) != mod_count)
+        if (hbm_device_get_modifiers(dev, &img_desc, mods) != mod_count)
             die("unexpected image modifier count change");
 
         if (img_desc.modifier != DRM_FORMAT_MOD_INVALID) {
@@ -114,12 +113,11 @@ test_image(struct hbm_device *dev)
                 die("unexpected image modifier");
 
             /* R8 / MOD_LINEAR has 1 plane */
-            if (plane_counts[0] != 1)
+            if (hbm_device_get_plane_count(dev, img_desc.format, img_desc.modifier) != 1)
                 die("unexpected plane count");
         }
 
         free(mods);
-        free(plane_counts);
     }
 
     const struct hbm_extent_2d img_extent = {
@@ -219,7 +217,7 @@ test_buffer(struct hbm_device *dev)
         .modifier = DRM_FORMAT_MOD_INVALID,
     };
 
-    if (hbm_device_get_modifiers(dev, &buf_desc, NULL, NULL) != 0)
+    if (hbm_device_get_modifiers(dev, &buf_desc, NULL) != 0)
         die("unexpeted buffer modifiers");
 
     const struct hbm_extent_1d buf_extent = {
