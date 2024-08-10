@@ -50,11 +50,9 @@ fn main() {
     .unwrap();
 
     bo.map().unwrap();
+    bo.flush().unwrap();
+    bo.invalidate().unwrap();
     bo.unmap();
-
-    bo.wait(hbm::Access::Read).unwrap();
-    bo.sync(hbm::Access::ReadWrite, true).unwrap();
-    bo.sync(hbm::Access::ReadWrite, false).unwrap();
 }
 
 #[cfg(not(feature = "drm"))]

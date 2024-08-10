@@ -127,9 +127,6 @@ mod dma_buf {
     nix::ioctl_write_ptr!(dma_buf_ioctl_sync, DMA_BUF_BASE, 0, dma_buf_sync);
     nix::ioctl_write_ptr!(dma_buf_ioctl_set_name, DMA_BUF_BASE, 1, u64);
 
-    /// If access is Read, end is optional.  Otherwise, start/end with the same access is required.
-    ///
-    /// If there is an implicit fence, start will block.
     pub fn dma_buf_sync(dmabuf: impl AsFd, access: Access, start: bool) -> Result<()> {
         let flags = match access {
             Access::Read => DMA_BUF_SYNC_READ,

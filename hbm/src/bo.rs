@@ -5,7 +5,7 @@ use super::backends::{
     Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Flags, Handle, Layout,
 };
 use super::device::Device;
-use super::types::{Access, Error, Mapping, Result};
+use super::types::{Error, Mapping, Result};
 use std::os::fd::OwnedFd;
 use std::sync::{Arc, Mutex};
 
@@ -182,14 +182,6 @@ impl Bo {
         // what if src is from another device?
         self.backend()
             .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd)
-    }
-
-    pub fn wait(&self, access: Access) -> Result<()> {
-        self.backend().wait(&self.handle, access)
-    }
-
-    pub fn sync(&self, access: Access, start: bool) -> Result<()> {
-        self.backend().sync(&self.handle, access, start)
     }
 }
 

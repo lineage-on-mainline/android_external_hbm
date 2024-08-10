@@ -87,24 +87,38 @@ pub fn unmap(_handle: &Handle, mapping: Mapping) {
     let _ = utils::munmap(mapping);
 }
 
-// TODO DMA_BUF_IOCTL_EXPORT_SYNC_FILE
-// TODO DMA_BUF_IOCTL_IMPORT_SYNC_FILE
-pub fn wait(handle: &Handle, access: Access) -> Result<()> {
+// utils::dma_buf_sync is supposed to be used as follows
+//
+//  - utils::dma_buf_sync(dmabuf, access, true)
+//  - cpu access with the specified access type
+//  - utils::dma_buf_sync(dmabuf, access, false)
+//
+// But for our purposes, we assume it works as follows
+//
+//  - utils::dma_buf_sync(dmabuf, access, true)
+//    - waits for the implicit fences (if any)
+//    - makes sure device writes are available in the cpu domain (if any)
+//    - Access::Read further invalidates the cpu cache
+//  - utils::dma_buf_sync(dmabuf, access, false)
+//    - Access::Write flushes the cpu cache and makes sure cpu writes are available in the device
+//      domain
+//
+// and abuse it for flush/invalidate.  These are not used in most setups anyway.
+
+pub fn flush(handle: &Handle) -> Result<()> {
     let (dmabuf, _) = match &handle.payload {
         HandlePayload::DmaBuf(v) => v,
         _ => return Err(Error::NoSupport),
     };
 
-    utils::poll(dmabuf, access).and(Ok(()))
+    utils::dma_buf_sync(dmabuf, Access::ReadWrite, false)
 }
 
-/// When start is true, this transfers ownership to cpu.  It implies wait and cache invalidate.
-/// When start is false, this transfers ownership to device.  It implies cache flush.
-pub fn sync(handle: &Handle, access: Access, start: bool) -> Result<()> {
+pub fn invalidate(handle: &Handle) -> Result<()> {
     let (dmabuf, _) = match &handle.payload {
         HandlePayload::DmaBuf(v) => v,
         _ => return Err(Error::NoSupport),
     };
 
-    utils::dma_buf_sync(dmabuf, access, start)
+    utils::dma_buf_sync(dmabuf, Access::ReadWrite, true)
 }

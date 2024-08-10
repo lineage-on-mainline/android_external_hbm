@@ -477,10 +477,11 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
         dst_offset,
         size,
     };
+    // TODO takes an in-fence
     match bo.copy_buffer(src, copy, None) {
         Ok(sync_fd) => {
             if let Some(_sync_fd) = sync_fd {
-                // TODO
+                // TODO returns the out-fence such that minigbm can DMA_BUF_IOCTL_IMPORT_SYNC_FILE
             }
 
             true
@@ -515,10 +516,11 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
         height,
     };
 
+    // TODO takes an in-fence
     match bo.copy_buffer_image(src, copy, None) {
         Ok(sync_fd) => {
             if let Some(_sync_fd) = sync_fd {
-                // TODO
+                // TODO returns the out-fence such that minigbm can DMA_BUF_IOCTL_IMPORT_SYNC_FILE
             }
 
             true

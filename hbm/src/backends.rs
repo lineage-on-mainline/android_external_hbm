@@ -10,7 +10,7 @@ pub mod vulkan;
 use super::dma_buf;
 use super::formats;
 use super::sash;
-use super::types::{Access, Error, Format, Mapping, Modifier, Result, Size};
+use super::types::{Error, Format, Mapping, Modifier, Result, Size};
 use std::os::fd::OwnedFd;
 
 bitflags::bitflags! {
@@ -491,20 +491,12 @@ pub trait Backend: Send + Sync {
         dma_buf::unmap(handle, mapping)
     }
 
-    fn flush(&self, _handle: &Handle) -> Result<()> {
-        Err(Error::NoSupport)
+    fn flush(&self, handle: &Handle) -> Result<()> {
+        dma_buf::flush(handle)
     }
 
-    fn invalidate(&self, _handle: &Handle) -> Result<()> {
-        Err(Error::NoSupport)
-    }
-
-    fn wait(&self, handle: &Handle, access: Access) -> Result<()> {
-        dma_buf::wait(handle, access)
-    }
-
-    fn sync(&self, handle: &Handle, access: Access, start: bool) -> Result<()> {
-        dma_buf::sync(handle, access, start)
+    fn invalidate(&self, handle: &Handle) -> Result<()> {
+        dma_buf::invalidate(handle)
     }
 
     fn copy_buffer(
