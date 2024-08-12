@@ -205,11 +205,9 @@ fn format_class(format: Format) -> Result<&'static FormatClass> {
     Ok(format_class)
 }
 
-#[cfg(feature = "drm")]
-pub fn bpp(format: Format) -> Result<u32> {
+pub fn block_size(format: Format, plane: u32) -> Result<u32> {
     let format_class = format_class(format)?;
-    let bs = format_class.block_size.iter().sum::<u8>() as u32;
-    Ok(bs * 8)
+    Ok(format_class.block_size[plane as usize] as u32)
 }
 
 pub fn plane_count(fmt: Format) -> Result<u32> {
@@ -338,6 +336,16 @@ pub fn to_vk(format: Format) -> Result<(vk::Format, Swizzle)> {
     }
 }
 
+pub fn from_vk(vk_fmt: vk::Format) -> Format {
+    // maybe sash should cache the reverse-mapping
+    for fmt in KNOWN_FORMATS {
+        if to_vk(fmt).unwrap().0 == vk_fmt {
+            return fmt;
+        }
+    }
+    unreachable!()
+}
+
 pub struct VkIter(slice::Iter<'static, Format>);
 
 impl Iterator for VkIter {
@@ -401,8 +409,8 @@ mod tests {
     }
 
     #[test]
-    fn bpp() {
-        assert_eq!(super::bpp(R8).unwrap(), 8);
+    fn block_size() {
+        assert_eq!(super::block_size(R8, 0).unwrap(), 1);
     }
 
     #[test]

@@ -247,7 +247,7 @@ impl super::Backend for Backend {
 
         let size = (extent.width(), extent.height());
         let format = DrmFourcc::try_from(desc.format.0).or(Err(Error::NoSupport))?;
-        let bpp = formats::bpp(desc.format)?;
+        let bpp = formats::block_size(desc.format, 0)? * 8;
 
         let buf = self.device.create_dumb_buffer(size, format, bpp)?;
         let pitch = buf.pitch();

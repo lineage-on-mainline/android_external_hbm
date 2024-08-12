@@ -1002,10 +1002,11 @@ impl Device {
         &self,
         cmd: vk::CommandBuffer,
         img: vk::Image,
+        aspect: vk::ImageAspectFlags,
         scope: PipelineBarrierScope,
     ) {
         let img_subres = vk::ImageSubresourceRange::default()
-            .aspect_mask(vk::ImageAspectFlags::COLOR) // TODO
+            .aspect_mask(aspect)
             .level_count(1)
             .layer_count(1);
         let img_barrier = vk::ImageMemoryBarrier::default()
@@ -1067,9 +1068,10 @@ impl Device {
         let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
         let img_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
         let buf_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
+        let img_aspect = region.image_subresource.aspect_mask;
         let img_layout = img_acquire.dst_image_layout;
 
-        self.cmd_image_barrier(cmd, img, img_acquire);
+        self.cmd_image_barrier(cmd, img, img_aspect, img_acquire);
         self.cmd_buffer_barrier(cmd, buf, buf_acquire);
 
         // SAFETY: good
@@ -1083,7 +1085,7 @@ impl Device {
             );
         }
 
-        self.cmd_image_barrier(cmd, img, img_release);
+        self.cmd_image_barrier(cmd, img, img_aspect, img_release);
         self.cmd_buffer_barrier(cmd, buf, buf_release);
 
         self.command_pool.end_and_submit(self, cmd)
@@ -1101,10 +1103,11 @@ impl Device {
         let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
         let buf_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
         let img_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
+        let img_aspect = region.image_subresource.aspect_mask;
         let img_layout = img_acquire.dst_image_layout;
 
         self.cmd_buffer_barrier(cmd, buf, buf_acquire);
-        self.cmd_image_barrier(cmd, img, img_acquire);
+        self.cmd_image_barrier(cmd, img, img_aspect, img_acquire);
 
         // SAFETY: good
         unsafe {
@@ -1118,7 +1121,7 @@ impl Device {
         }
 
         self.cmd_buffer_barrier(cmd, buf, buf_release);
-        self.cmd_image_barrier(cmd, img, img_release);
+        self.cmd_image_barrier(cmd, img, img_aspect, img_release);
 
         self.command_pool.end_and_submit(self, cmd)
     }
@@ -1615,6 +1618,7 @@ pub struct Image {
 
     tiling: vk::ImageTiling,
     format: vk::Format,
+    format_plane_count: u32,
 }
 
 impl Image {
@@ -1703,12 +1707,14 @@ impl Image {
         import: Option<(OwnedFd, Layout)>,
     ) -> Result<Self> {
         let memory = Memory::new(device.clone());
+        let format_plane_count = formats::plane_count(formats::from_vk(format))?;
         let mut img = Self {
             device,
             handle,
             memory,
             tiling,
             format,
+            format_plane_count,
         };
 
         img.memory
@@ -1832,10 +1838,19 @@ impl Image {
     }
 
     fn get_copy_region(&self, copy: CopyBufferImage) -> vk::BufferImageCopy {
-        // TODO vk::ImageAspectFlags::PLANE_i when plane_count > 1
-        let aspect = vk::ImageAspectFlags::COLOR;
-        // TODO divided by bpp to get texels
-        let row_len = copy.stride as u32;
+        let aspect = if self.format_plane_count == 1 {
+            vk::ImageAspectFlags::COLOR
+        } else {
+            match copy.plane {
+                1 => vk::ImageAspectFlags::PLANE_0,
+                2 => vk::ImageAspectFlags::PLANE_1,
+                3 => vk::ImageAspectFlags::PLANE_2,
+                _ => unreachable!(),
+            }
+        };
+
+        let bpp = formats::block_size(formats::from_vk(self.format), copy.plane).unwrap();
+        let row_len = copy.stride as u32 / bpp;
 
         let subres = vk::ImageSubresourceLayers::default()
             .aspect_mask(aspect)
