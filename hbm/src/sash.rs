@@ -6,6 +6,7 @@ use super::formats;
 use super::types::{Error, Mapping, Modifier, Result, Size};
 use super::utils;
 use ash::vk;
+use log::debug;
 use std::collections::HashMap;
 use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
@@ -509,8 +510,13 @@ pub struct Device {
 
 impl Device {
     pub fn build(name: &str, dev_idx: Option<usize>, dev_id: Option<u64>) -> Result<Arc<Device>> {
+        debug!("initializing vulkan instance");
         let instance = Instance::new(name)?;
+
+        debug!("initializing vulkan physical device");
         let (physical_dev, dev_info) = PhysicalDevice::new(instance, dev_idx, dev_id)?;
+
+        debug!("initializing vulkan device");
         let dev = Self::new(physical_dev, dev_info)?;
 
         Ok(Arc::new(dev))

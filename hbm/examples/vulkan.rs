@@ -106,6 +106,8 @@ fn test_buffer(dev: Arc<hbm::Device>) {
 }
 
 fn main() {
+    env_logger::init();
+
     let backend = hbm::vulkan::Builder::new().build().unwrap();
     let dev = hbm::Builder::new().add_backend(backend).build().unwrap();
 

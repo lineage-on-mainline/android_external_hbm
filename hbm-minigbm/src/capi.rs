@@ -1,6 +1,7 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+use super::log;
 use libc::dev_t;
 use std::collections::{hash_map::Entry, HashMap};
 use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd, RawFd};
@@ -192,6 +193,8 @@ fn str_as_ref<'a>(s: *const ffi::c_char) -> Option<&'a str> {
 /// # Safety
 #[no_mangle]
 pub unsafe extern "C" fn hbm_device_create(dev: dev_t) -> *mut hbm_device {
+    log::init();
+
     let backend = match hbm::vulkan::Builder::new().device_id(dev).build() {
         Ok(backend) => backend,
         _ => return ptr::null_mut(),

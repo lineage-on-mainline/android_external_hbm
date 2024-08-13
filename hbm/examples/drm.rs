@@ -4,6 +4,8 @@ use std::slice;
 
 #[cfg(feature = "drm")]
 fn main() {
+    env_logger::init();
+
     let backend = hbm::drm_kms::Builder::new()
         .node_path("/dev/dri/card0")
         .build()

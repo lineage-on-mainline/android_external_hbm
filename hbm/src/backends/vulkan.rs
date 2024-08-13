@@ -10,6 +10,7 @@ use crate::sash;
 use crate::types::{Access, Error, Format, Mapping, Modifier, Result};
 use crate::utils;
 use ash::vk;
+use log::info;
 use std::os::fd::OwnedFd;
 use std::sync::Arc;
 
@@ -175,6 +176,8 @@ impl Backend {
         let backend = Self {
             device: sash::Device::build("hbm", device_index, device_id)?,
         };
+
+        info!("vulkan backend initialized");
 
         Ok(backend)
     }

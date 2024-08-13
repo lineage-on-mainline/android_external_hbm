@@ -3,6 +3,8 @@ use hbm::{Format, Usage};
 
 #[cfg(feature = "drm")]
 fn main() {
+    env_logger::init();
+
     let drm = hbm::drm_kms::Builder::new()
         .node_path("/dev/dri/card0")
         .build()
