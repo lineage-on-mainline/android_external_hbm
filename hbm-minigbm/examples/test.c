@@ -257,10 +257,18 @@ test_buffer(struct hbm_device *dev)
     hbm_bo_destroy(buf_bo);
 }
 
+static void
+test_log(int32_t lv, const char *msg, void *data)
+{
+	printf("hbm: %s\n", msg);
+}
+
 int
 main(void)
 {
     const dev_t dev_id = makedev(226, 128);
+
+    hbm_logger_init(HBM_LOG_DEBUG, test_log, NULL);
 
     struct hbm_device *dev = hbm_device_create(dev_id);
     if (!dev)

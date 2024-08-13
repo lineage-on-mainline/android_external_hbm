@@ -245,7 +245,7 @@ impl super::Backend for Backend {
                 mem_info,
                 extent.width(),
                 extent.height(),
-                &modifiers,
+                modifiers,
                 con,
             )?;
 

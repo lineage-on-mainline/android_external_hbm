@@ -1,14 +1,30 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use log::{LevelFilter, Log, Metadata, Record};
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd};
-use std::os::unix::fs::MetadataExt;
-use std::path::Path;
-use std::{env, fs, io, process, sync};
+use super::capi::*;
+use log::{Level, LevelFilter, Log, Metadata, Record};
+use std::ffi;
+use std::sync::{Mutex, Once};
+
+type LoggerCallback = Box<dyn Fn(&Record) + Send>;
 
 struct Logger {
-    syslog: Option<syslog::BasicLogger>,
+    callback: Mutex<Option<LoggerCallback>>,
+}
+
+impl Logger {
+    fn init(&self) {
+        let null = |_rec: &Record| {};
+        self.update(null);
+    }
+
+    fn update<T>(&self, f: T)
+    where
+        T: Fn(&Record) + Send + 'static,
+    {
+        let mut callback = self.callback.lock().unwrap();
+        *callback = Some(Box::new(f));
+    }
 }
 
 impl Log for Logger {
@@ -16,76 +32,73 @@ impl Log for Logger {
         true
     }
 
-    fn log(&self, record: &Record) {
-        eprintln!(
-            "hbm: {}: {}: {}",
-            record.level(),
-            record.target(),
-            record.args()
-        );
-
-        if let Some(syslog) = &self.syslog {
-            syslog.log(record);
-        }
+    fn log(&self, rec: &Record) {
+        let callback = self.callback.lock().unwrap();
+        let callback = callback.as_ref().unwrap();
+        callback(rec);
     }
 
-    fn flush(&self) {
-        if let Some(syslog) = &self.syslog {
-            syslog.flush();
-        }
-    }
+    fn flush(&self) {}
 }
 
-fn get_max_level() -> LevelFilter {
-    if env::var("HBM_DEBUG").is_ok() {
-        LevelFilter::Debug
-    } else {
-        LevelFilter::Info
-    }
-}
-
-fn is_stderr_null() -> bool {
-    let stderr_md = {
-        let fd = io::stderr().as_raw_fd();
-        // SAFETY: fd is valid
-        let file = unsafe { fs::File::from_raw_fd(fd) };
-        let md = file.metadata();
-        file.into_raw_fd();
-
-        md
-    };
-
-    if stderr_md.is_err() {
-        return true;
-    }
-
-    let null_md = Path::new("/dev/null").metadata();
-    if null_md.is_err() {
-        return true;
-    }
-
-    stderr_md.unwrap().rdev() == null_md.unwrap().rdev()
-}
+static LOGGER: Logger = Logger {
+    callback: Mutex::new(None),
+};
 
 fn init_once() {
-    let syslog = if is_stderr_null() {
-        let formatter = syslog::Formatter3164 {
-            facility: syslog::Facility::LOG_USER,
-            hostname: None,
-            process: String::from("hbm"),
-            pid: process::id(),
-        };
-        syslog::unix(formatter).map(syslog::BasicLogger::new).ok()
-    } else {
-        None
-    };
-
-    let logger = Logger { syslog };
-
-    let _ = log::set_boxed_logger(Box::new(logger)).map(|_| log::set_max_level(get_max_level()));
+    LOGGER.init();
+    let _ = log::set_logger(&LOGGER);
 }
 
-pub fn init() {
-    static ONCE: sync::Once = sync::Once::new();
+struct CLogger {
+    logger: hbm_logger,
+    data: *mut ffi::c_void,
+}
+
+impl CLogger {
+    fn log(&self, rec: &Record) {
+        let lv = match rec.level() {
+            Level::Error => HBM_LOG_ERROR,
+            Level::Warn => HBM_LOG_WARN,
+            Level::Info => HBM_LOG_INFO,
+            Level::Debug => HBM_LOG_DEBUG,
+            Level::Trace => HBM_LOG_DEBUG,
+        };
+
+        let msg = format!("{}", rec.args());
+
+        if let Ok(c_msg) = ffi::CString::new(msg) {
+            // SAFETY: logger is a valid function pointer
+            unsafe {
+                (self.logger)(lv, c_msg.as_ptr(), self.data);
+            }
+        }
+    }
+}
+
+// SAFETY: users should provide the guarantees
+unsafe impl Send for CLogger {}
+
+fn set_max_level(lv: i32) {
+    let filter = match lv {
+        HBM_LOG_ERROR => LevelFilter::Error,
+        HBM_LOG_WARN => LevelFilter::Warn,
+        HBM_LOG_INFO => LevelFilter::Info,
+        HBM_LOG_DEBUG => LevelFilter::Debug,
+        _ => LevelFilter::Error,
+    };
+
+    log::set_max_level(filter);
+}
+
+pub fn init(max_lv: i32, logger: hbm_logger, data: *mut ffi::c_void) {
+    static ONCE: Once = Once::new();
     ONCE.call_once(init_once);
+
+    set_max_level(max_lv);
+
+    let c_logger = CLogger { logger, data };
+    LOGGER.update(move |rec: &Record| {
+        c_logger.log(rec);
+    });
 }

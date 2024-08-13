@@ -185,7 +185,7 @@ impl Constraint {
         self
     }
 
-    fn to_tuple(self) -> (Size, Size, Size) {
+    fn to_tuple(&self) -> (Size, Size, Size) {
         (self.offset_align, self.stride_align, self.size_align)
     }
 

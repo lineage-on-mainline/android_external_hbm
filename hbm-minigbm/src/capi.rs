@@ -8,6 +8,11 @@ use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
 use std::{ffi, ptr, slice};
 
+pub const HBM_LOG_ERROR: i32 = 1;
+pub const HBM_LOG_WARN: i32 = 2;
+pub const HBM_LOG_INFO: i32 = 3;
+pub const HBM_LOG_DEBUG: i32 = 4;
+
 pub const HBM_FLAGS_MAPPABLE: u32 = 1 << 0;
 pub const HBM_FLAGS_COHERENT: u32 = 1 << 1;
 pub const HBM_FLAGS_NO_CACHE: u32 = 1 << 2;
@@ -19,6 +24,10 @@ pub const HBM_USAGE_TRANSFER: u32 = 1 << 0;
 pub const HBM_USAGE_STORAGE: u32 = 1 << 1;
 pub const HBM_USAGE_SAMPLED: u32 = 1 << 2;
 pub const HBM_USAGE_COLOR: u32 = 1 << 3;
+
+#[allow(non_camel_case_types)]
+pub type hbm_logger =
+    unsafe extern "C" fn(lv: i32, msg: *const ffi::c_char, data: *mut ffi::c_void);
 
 #[repr(C)]
 pub struct hbm_device {
@@ -192,9 +201,13 @@ fn str_as_ref<'a>(s: *const ffi::c_char) -> Option<&'a str> {
 
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn hbm_device_create(dev: dev_t) -> *mut hbm_device {
-    log::init();
+pub unsafe extern "C" fn hbm_logger_init(max_lv: i32, logger: hbm_logger, data: *mut ffi::c_void) {
+    log::init(max_lv, logger, data);
+}
 
+/// # Safety
+#[no_mangle]
+pub unsafe extern "C" fn hbm_device_create(dev: dev_t) -> *mut hbm_device {
     let backend = match hbm::vulkan::Builder::new().device_id(dev).build() {
         Ok(backend) => backend,
         _ => return ptr::null_mut(),

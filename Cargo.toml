@@ -18,7 +18,6 @@ cbindgen = "0.24"
 drm = "0.12"
 drm-fourcc = "2"
 env_logger = "0.11"
-syslog = "6"
 hbm = { version = "0.1.1", path = "hbm" }
 libc = "0.2"
 log = "0.4"

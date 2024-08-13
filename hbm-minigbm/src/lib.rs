@@ -3,4 +3,5 @@
 
 #[cfg(feature = "capi")]
 mod capi;
+#[cfg(feature = "capi")]
 mod log;
