@@ -90,10 +90,55 @@ struct Instance {
     handle: ash::Instance,
 }
 
+unsafe extern "system" fn debug_utils_messenger(
+    severity: vk::DebugUtilsMessageSeverityFlagsEXT,
+    _types: vk::DebugUtilsMessageTypeFlagsEXT,
+    data: *const vk::DebugUtilsMessengerCallbackDataEXT,
+    _user_data: *mut ffi::c_void,
+) -> vk::Bool32 {
+    let lv = match severity {
+        vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE => log::Level::Debug,
+        vk::DebugUtilsMessageSeverityFlagsEXT::INFO => log::Level::Info,
+        vk::DebugUtilsMessageSeverityFlagsEXT::WARNING => log::Level::Warn,
+        vk::DebugUtilsMessageSeverityFlagsEXT::ERROR => log::Level::Error,
+        _ => log::Level::Error,
+    };
+
+    // SAFETY: data is valid
+    let data = unsafe { &*data };
+
+    let msg_id = if !data.p_message_id_name.is_null() {
+        // SAFETY: it is valid utf-8
+        let cstr = unsafe { ffi::CStr::from_ptr(data.p_message_id_name) };
+        Some(cstr.to_str().unwrap())
+    } else {
+        None
+    };
+
+    let msg = if !data.p_message.is_null() {
+        // SAFETY: it is valid utf-8
+        let cstr = unsafe { ffi::CStr::from_ptr(data.p_message) };
+        Some(cstr.to_str().unwrap())
+    } else {
+        None
+    };
+
+    if msg_id.is_some() && msg.is_some() {
+        log::log!(lv, "vulkan: {}: {}", msg_id.unwrap(), msg.unwrap());
+    } else {
+        let msg = msg_id.or(msg);
+        if msg.is_some() {
+            log::log!(lv, "vulkan: {}", msg.unwrap());
+        }
+    }
+
+    vk::FALSE
+}
+
 impl Instance {
-    fn new(app_name: &str) -> Result<Self> {
+    fn new(app_name: &str, debug: bool) -> Result<Self> {
         let entry = Self::create_entry()?;
-        let handle = Self::create_instance(&entry, app_name)?;
+        let handle = Self::create_instance(&entry, app_name, debug)?;
         let instance = Self {
             _entry: entry,
             handle,
@@ -109,7 +154,25 @@ impl Instance {
         Ok(entry)
     }
 
-    fn create_instance(entry: &ash::Entry, app_name: &str) -> Result<ash::Instance> {
+    fn get_enabled_extensions(entry: &ash::Entry) -> Vec<*const ffi::c_char> {
+        // SAFETY: entry is valid
+        let exts =
+            unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap_or_default();
+
+        let has_debug_utils = exts.iter().any(|ext| {
+            // SAFETY: vk spec guarantees valid c-string
+            let name = unsafe { ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
+            name == ash::ext::debug_utils::NAME
+        });
+
+        if has_debug_utils {
+            vec![ash::ext::debug_utils::NAME.as_ptr()]
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn create_instance(entry: &ash::Entry, app_name: &str, debug: bool) -> Result<ash::Instance> {
         // SAFETY: good
         let ver = unsafe { entry.try_enumerate_instance_version() }?;
 
@@ -120,7 +183,31 @@ impl Instance {
         let app_info = vk::ApplicationInfo::default()
             .application_name(&c_name)
             .api_version(REQUIRED_API_VERSION);
-        let instance_info = vk::InstanceCreateInfo::default().application_info(&app_info);
+        let mut instance_info = vk::InstanceCreateInfo::default().application_info(&app_info);
+
+        let mut enabled_exts = Vec::new();
+        if debug {
+            enabled_exts = Self::get_enabled_extensions(entry);
+        }
+
+        let mut msg_info = vk::DebugUtilsMessengerCreateInfoEXT::default();
+        if debug && !enabled_exts.is_empty() {
+            let msg_severity = vk::DebugUtilsMessageSeverityFlagsEXT::VERBOSE
+                | vk::DebugUtilsMessageSeverityFlagsEXT::INFO
+                | vk::DebugUtilsMessageSeverityFlagsEXT::WARNING
+                | vk::DebugUtilsMessageSeverityFlagsEXT::ERROR;
+            let msg_type = vk::DebugUtilsMessageTypeFlagsEXT::GENERAL
+                | vk::DebugUtilsMessageTypeFlagsEXT::VALIDATION
+                | vk::DebugUtilsMessageTypeFlagsEXT::PERFORMANCE;
+            msg_info = msg_info
+                .message_severity(msg_severity)
+                .message_type(msg_type)
+                .pfn_user_callback(Some(debug_utils_messenger));
+
+            instance_info = instance_info
+                .enabled_extension_names(&enabled_exts)
+                .push_next(&mut msg_info);
+        }
 
         // SAFETY: entry and instance_info are valid
         let handle = unsafe { entry.create_instance(&instance_info, None) }?;
@@ -511,7 +598,8 @@ pub struct Device {
 impl Device {
     pub fn build(name: &str, dev_idx: Option<usize>, dev_id: Option<u64>) -> Result<Arc<Device>> {
         debug!("initializing vulkan instance");
-        let instance = Instance::new(name)?;
+        let debug = cfg!(debug_assertions);
+        let instance = Instance::new(name, debug)?;
 
         debug!("initializing vulkan physical device");
         let (physical_dev, dev_info) = PhysicalDevice::new(instance, dev_idx, dev_id)?;

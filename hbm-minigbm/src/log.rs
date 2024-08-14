@@ -21,7 +21,7 @@ impl Logger {
 
         if let Ok(filename) = env::var("HBM_LOG_FILE") {
             let mut file = self.file.lock().unwrap();
-            *file = fs::File::create(&filename).ok();
+            *file = fs::File::create(filename).ok();
         }
     }
 
