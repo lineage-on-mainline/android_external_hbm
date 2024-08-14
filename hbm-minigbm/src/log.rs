@@ -46,7 +46,7 @@ impl Log for Logger {
 
         let mut file = self.file.lock().unwrap();
         if let Some(file) = file.as_mut() {
-            let _ = write!(file, "{}: {}", rec.level(), rec.args());
+            let _ = writeln!(file, "{}: {}", rec.level(), rec.args());
         }
     }
 
