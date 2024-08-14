@@ -7,30 +7,37 @@ use std::io::Write;
 use std::sync::{Mutex, Once};
 use std::{env, ffi, fs};
 
-type LoggerCallback = Box<dyn Fn(&Record) + Send>;
+struct LoggerState {
+    callback: Box<dyn Fn(&Record) + Send>,
+    file: Option<fs::File>,
+}
 
 struct Logger {
-    callback: Mutex<Option<LoggerCallback>>,
-    file: Mutex<Option<fs::File>>,
+    state: Mutex<Option<LoggerState>>,
 }
 
 impl Logger {
     fn init(&self) {
-        let null = |_rec: &Record| {};
-        self.update(null);
+        let mut state = self.state.lock().unwrap();
 
+        let callback = Box::new(|_rec: &Record| {});
+
+        let mut file = None;
         if let Ok(filename) = env::var("HBM_LOG_FILE") {
-            let mut file = self.file.lock().unwrap();
-            *file = fs::File::create(filename).ok();
+            file = fs::File::create(filename).ok();
         }
+
+        *state = Some(LoggerState { callback, file });
     }
 
-    fn update<T>(&self, f: T)
+    fn update_callback<T>(&self, cb: T)
     where
         T: Fn(&Record) + Send + 'static,
     {
-        let mut callback = self.callback.lock().unwrap();
-        *callback = Some(Box::new(f));
+        let mut state = self.state.lock().unwrap();
+        let state = state.as_mut().unwrap();
+
+        state.callback = Box::new(cb);
     }
 }
 
@@ -40,12 +47,12 @@ impl Log for Logger {
     }
 
     fn log(&self, rec: &Record) {
-        let callback = self.callback.lock().unwrap();
-        let callback = callback.as_ref().unwrap();
-        callback(rec);
+        let mut state = self.state.lock().unwrap();
+        let state = state.as_mut().unwrap();
 
-        let mut file = self.file.lock().unwrap();
-        if let Some(file) = file.as_mut() {
+        (state.callback)(rec);
+
+        if let Some(file) = state.file.as_mut() {
             let _ = writeln!(file, "{}: {}", rec.level(), rec.args());
         }
     }
@@ -54,8 +61,7 @@ impl Log for Logger {
 }
 
 static LOGGER: Logger = Logger {
-    callback: Mutex::new(None),
-    file: Mutex::new(None),
+    state: Mutex::new(None),
 };
 
 fn init_once() {
@@ -111,7 +117,7 @@ pub fn init(max_lv: i32, logger: hbm_logger, data: *mut ffi::c_void) {
     set_max_level(max_lv);
 
     let c_logger = CLogger { logger, data };
-    LOGGER.update(move |rec: &Record| {
+    LOGGER.update_callback(move |rec: &Record| {
         c_logger.log(rec);
     });
 }
