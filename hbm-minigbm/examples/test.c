@@ -91,7 +91,7 @@ static void
 test_image(struct hbm_device *dev)
 {
     const struct hbm_description img_desc = {
-        .flags = HBM_FLAGS_MAPPABLE,
+        .flags = HBM_FLAG_MAPPABLE,
         .usage = HBM_USAGE_TRANSFER,
         .format = DRM_FORMAT_R8,
         .modifier = DRM_FORMAT_MOD_LINEAR,
@@ -148,7 +148,7 @@ test_image(struct hbm_device *dev)
 
     {
         const struct hbm_description tmp_desc = {
-            .flags = HBM_FLAGS_MAPPABLE,
+            .flags = HBM_FLAG_MAPPABLE,
             .usage = HBM_USAGE_TRANSFER,
             .format = DRM_FORMAT_INVALID,
             .modifier = DRM_FORMAT_MOD_INVALID,
@@ -214,7 +214,7 @@ static void
 test_buffer(struct hbm_device *dev)
 {
     const struct hbm_description buf_desc = {
-        .flags = HBM_FLAGS_MAPPABLE,
+        .flags = HBM_FLAG_MAPPABLE,
         .usage = HBM_USAGE_TRANSFER,
         .format = DRM_FORMAT_INVALID,
         .modifier = DRM_FORMAT_MOD_INVALID,
@@ -258,9 +258,9 @@ test_buffer(struct hbm_device *dev)
 }
 
 static void
-test_log(int32_t lv, const char *msg, void *data)
+test_log(enum hbm_log_level lv, const char *msg, void *data)
 {
-	printf("hbm: %s\n", msg);
+    printf("hbm: %s\n", msg);
 }
 
 int
@@ -268,7 +268,7 @@ main(void)
 {
     const dev_t dev_id = makedev(226, 128);
 
-    hbm_logger_init(HBM_LOG_DEBUG, test_log, NULL);
+    hbm_log_init(HBM_LOG_LEVEL_DEBUG, test_log, NULL);
 
     struct hbm_device *dev = hbm_device_create(dev_id);
     if (!dev)
