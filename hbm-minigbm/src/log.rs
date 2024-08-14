@@ -3,19 +3,26 @@
 
 use super::capi::*;
 use log::{Level, LevelFilter, Log, Metadata, Record};
-use std::ffi;
+use std::io::Write;
 use std::sync::{Mutex, Once};
+use std::{env, ffi, fs};
 
 type LoggerCallback = Box<dyn Fn(&Record) + Send>;
 
 struct Logger {
     callback: Mutex<Option<LoggerCallback>>,
+    file: Mutex<Option<fs::File>>,
 }
 
 impl Logger {
     fn init(&self) {
         let null = |_rec: &Record| {};
         self.update(null);
+
+        if let Ok(filename) = env::var("HBM_LOG_FILE") {
+            let mut file = self.file.lock().unwrap();
+            *file = fs::File::create(&filename).ok();
+        }
     }
 
     fn update<T>(&self, f: T)
@@ -36,6 +43,11 @@ impl Log for Logger {
         let callback = self.callback.lock().unwrap();
         let callback = callback.as_ref().unwrap();
         callback(rec);
+
+        let mut file = self.file.lock().unwrap();
+        if let Some(file) = file.as_mut() {
+            let _ = write!(file, "{}: {}", rec.level(), rec.args());
+        }
     }
 
     fn flush(&self) {}
@@ -43,6 +55,7 @@ impl Log for Logger {
 
 static LOGGER: Logger = Logger {
     callback: Mutex::new(None),
+    file: Mutex::new(None),
 };
 
 fn init_once() {
