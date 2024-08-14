@@ -1,7 +1,6 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::log;
 use libc::dev_t;
 use std::collections::{hash_map::Entry, HashMap};
 use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd, RawFd};
@@ -27,7 +26,7 @@ pub const HBM_USAGE_COLOR: u32 = 1 << 3;
 
 #[allow(non_camel_case_types)]
 pub type hbm_logger =
-    unsafe extern "C" fn(lv: i32, msg: *const ffi::c_char, data: *mut ffi::c_void);
+    Option<unsafe extern "C" fn(lv: i32, msg: *const ffi::c_char, data: *mut ffi::c_void)>;
 
 #[repr(C)]
 pub struct hbm_device {
@@ -202,7 +201,40 @@ fn str_as_ref<'a>(s: *const ffi::c_char) -> Option<&'a str> {
 /// # Safety
 #[no_mangle]
 pub unsafe extern "C" fn hbm_logger_init(max_lv: i32, logger: hbm_logger, data: *mut ffi::c_void) {
-    log::init(max_lv, logger, data);
+    if logger.is_none() {
+        super::log::init(log::LevelFilter::Off, Box::new(|_| {}));
+        return;
+    }
+    let logger = logger.unwrap();
+
+    let filter = match max_lv {
+        HBM_LOG_ERROR => log::LevelFilter::Error,
+        HBM_LOG_WARN => log::LevelFilter::Warn,
+        HBM_LOG_INFO => log::LevelFilter::Info,
+        HBM_LOG_DEBUG => log::LevelFilter::Debug,
+        _ => log::LevelFilter::Error,
+    };
+
+    let data = data as usize;
+    let cb = move |rec: &log::Record| {
+        let lv = match rec.level() {
+            log::Level::Error => HBM_LOG_ERROR,
+            log::Level::Warn => HBM_LOG_WARN,
+            log::Level::Info => HBM_LOG_INFO,
+            log::Level::Debug => HBM_LOG_DEBUG,
+            log::Level::Trace => HBM_LOG_DEBUG,
+        };
+        let msg = format!("{}", rec.args());
+
+        if let Ok(c_msg) = ffi::CString::new(msg) {
+            // SAFETY: logger is a valid function pointer
+            unsafe {
+                logger(lv, c_msg.as_ptr(), data as *mut ffi::c_void);
+            }
+        }
+    };
+
+    super::log::init(filter, Box::new(cb));
 }
 
 /// # Safety
