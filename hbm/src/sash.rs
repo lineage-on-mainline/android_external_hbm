@@ -156,8 +156,8 @@ impl Instance {
 
     fn get_enabled_extensions(entry: &ash::Entry) -> Vec<*const ffi::c_char> {
         // SAFETY: entry is valid
-        let exts =
-            unsafe { entry.enumerate_instance_extension_properties(None) }.unwrap_or_default();
+        let exts = unsafe { entry.enumerate_instance_extension_properties(None) };
+        let exts = exts.unwrap_or_default();
 
         let has_debug_utils = exts.iter().any(|ext| {
             // SAFETY: vk spec guarantees valid c-string

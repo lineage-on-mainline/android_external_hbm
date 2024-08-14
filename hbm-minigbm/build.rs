@@ -12,7 +12,7 @@ fn main() {
     let hdr_name = format!("{}.h", pkg_name);
     let out_path = PathBuf::from(out_dir).join(&hdr_name);
 
-    let _changed = match cbindgen::generate(&manifest_dir) {
+    let _changed = match cbindgen::generate(manifest_dir) {
         Ok(bindings) => bindings.write_to_file(&out_path),
         Err(cbindgen::Error::ParseSyntaxError { .. }) => false,
         Err(err) => panic!("{:?}", err),
