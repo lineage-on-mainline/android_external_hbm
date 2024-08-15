@@ -245,7 +245,7 @@ struct PhysicalDeviceProperties {
 
     formats: HashMap<vk::Format, Vec<vk::DrmFormatModifierPropertiesEXT>>,
 
-    external_handle_type: vk::ExternalMemoryHandleTypeFlags,
+    external_memory_type: vk::ExternalMemoryHandleTypeFlags,
 }
 
 struct PhysicalDevice {
@@ -308,12 +308,7 @@ impl PhysicalDevice {
         self.probe_memory_types()?;
         self.probe_formats()?;
 
-        self.properties.external_handle_type = if self.properties.ext_image_drm_format_modifier {
-            vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT
-        } else {
-            // assume OPAQUE_FD is actually dma-buf
-            vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD
-        };
+        self.probe_external_memory()?;
 
         Ok(dev_info)
     }
@@ -350,7 +345,6 @@ impl PhysicalDevice {
             return Err(Error::NoSupport);
         }
 
-        dev_info.extensions[ExtId::ExtImageDrmFormatModifier as usize] = false;
         self.properties.ext_image_drm_format_modifier =
             dev_info.extensions[ExtId::ExtImageDrmFormatModifier as usize];
         if !self.properties.ext_image_drm_format_modifier {
@@ -547,6 +541,17 @@ impl PhysicalDevice {
             let mods = self.get_format_properties(fmt, format_plane_count as u32);
             self.properties.formats.insert(fmt, mods);
         }
+
+        Ok(())
+    }
+
+    fn probe_external_memory(&mut self) -> Result<()> {
+        self.properties.external_memory_type = if self.properties.ext_image_drm_format_modifier {
+            vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT
+        } else {
+            // assume OPAQUE_FD is actually dma-buf
+            vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD
+        };
 
         Ok(())
     }
@@ -758,7 +763,7 @@ impl Device {
         let external_info = vk::PhysicalDeviceExternalBufferInfo::default()
             .flags(buf_info.flags)
             .usage(buf_info.usage)
-            .handle_type(self.properties().external_handle_type);
+            .handle_type(self.properties().external_memory_type);
         let mut external_props = vk::ExternalBufferProperties::default();
 
         // SAFETY: good
@@ -813,7 +818,7 @@ impl Device {
         let tiling = self.get_image_tiling(modifier);
 
         let mut external_info = vk::PhysicalDeviceExternalImageFormatInfo::default()
-            .handle_type(self.properties().external_handle_type);
+            .handle_type(self.properties().external_memory_type);
         let mut mod_info = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
             .drm_format_modifier(modifier.0);
         let mut comp_info = vk::ImageCompressionControlEXT::default().flags(compression);
@@ -1451,14 +1456,14 @@ impl Memory {
     }
 
     fn get_dma_buf_mt_mask(&self, dmabuf: &OwnedFd) -> Result<u32> {
-        // ignore self.device.properties().external_handle_type
-        let external_handle_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
+        // ignore self.device.properties().external_memory_type
+        let external_memory_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
 
         let mut fd_props = vk::MemoryFdPropertiesKHR::default();
         // SAFETY: ok
         unsafe {
             self.device.dispatch.memory.get_memory_fd_properties(
-                external_handle_type,
+                external_memory_type,
                 dmabuf.as_raw_fd(),
                 &mut fd_props,
             )
@@ -1505,7 +1510,7 @@ impl Memory {
         dmabuf: Option<OwnedFd>,
     ) -> Result<vk::DeviceMemory> {
         let mut export_info = vk::ExportMemoryAllocateInfo::default()
-            .handle_types(self.device.properties().external_handle_type);
+            .handle_types(self.device.properties().external_memory_type);
         let mut mem_info = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
             .memory_type_index(mt_index)
@@ -1524,7 +1529,7 @@ impl Memory {
         if let Some(dmabuf) = dmabuf {
             raw_fd = dmabuf.into_raw_fd();
             import_info = import_info
-                .handle_type(self.device.properties().external_handle_type)
+                .handle_type(self.device.properties().external_memory_type)
                 .fd(raw_fd);
             mem_info = mem_info.push_next(&mut import_info);
         }
@@ -1605,7 +1610,7 @@ impl Memory {
     pub fn export_dma_buf(&self) -> Result<OwnedFd> {
         let fd_info = vk::MemoryGetFdInfoKHR::default()
             .memory(self.handle)
-            .handle_type(self.device.properties().external_handle_type);
+            .handle_type(self.device.properties().external_memory_type);
 
         // SAFETY: good
         let raw_fd = unsafe { self.device.dispatch.memory.get_memory_fd(&fd_info) }?;
@@ -1684,7 +1689,7 @@ impl Buffer {
         size: vk::DeviceSize,
     ) -> Result<vk::Buffer> {
         let mut external_info = vk::ExternalMemoryBufferCreateInfo::default()
-            .handle_types(dev.properties().external_handle_type);
+            .handle_types(dev.properties().external_memory_type);
         let buf_info = vk::BufferCreateInfo::default()
             .flags(buf_info.flags)
             .size(size)
@@ -1923,7 +1928,7 @@ impl Image {
         };
 
         let mut external_info = vk::ExternalMemoryImageCreateInfo::default()
-            .handle_types(dev.properties().external_handle_type);
+            .handle_types(dev.properties().external_memory_type);
         let mut img_info = vk::ImageCreateInfo::default()
             .flags(img_info.flags)
             .image_type(vk::ImageType::TYPE_2D)
