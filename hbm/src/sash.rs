@@ -819,18 +819,21 @@ impl Device {
 
         let mut external_info = vk::PhysicalDeviceExternalImageFormatInfo::default()
             .handle_type(self.properties().external_memory_type);
-        let mut mod_info = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default()
-            .drm_format_modifier(modifier.0);
         let mut comp_info = vk::ImageCompressionControlEXT::default().flags(compression);
-        let img_info = vk::PhysicalDeviceImageFormatInfo2::default()
+        let mut img_info = vk::PhysicalDeviceImageFormatInfo2::default()
             .format(format)
             .ty(vk::ImageType::TYPE_2D)
             .tiling(tiling)
             .usage(usage)
             .flags(flags)
             .push_next(&mut external_info)
-            .push_next(&mut mod_info)
             .push_next(&mut comp_info);
+
+        let mut mod_info = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default();
+        if tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+            mod_info = mod_info.drm_format_modifier(modifier.0);
+            img_info = img_info.push_next(&mut mod_info)
+        }
 
         let mut external_props = vk::ExternalImageFormatProperties::default();
         let mut comp_props = vk::ImageCompressionPropertiesEXT::default();
