@@ -182,7 +182,7 @@ pub struct hbm_constraint {
 }
 
 impl hbm_constraint {
-    fn into(con: *const Self) -> Option<hbm::Constraint> {
+    fn try_into(con: *const Self) -> Option<hbm::Constraint> {
         if con.is_null() {
             return None;
         }
@@ -232,13 +232,28 @@ impl hbm_bo {
     }
 }
 
-fn rawfd_into(fd: RawFd) -> OwnedFd {
+fn rawfd_try_into(fd: RawFd) -> Option<OwnedFd> {
+    if fd < 0 {
+        return None;
+    }
+
     // SAFETY: fd is valid
-    unsafe { OwnedFd::from_raw_fd(fd) }
+    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+    Some(fd)
 }
 
 fn rawfd_from(fd: OwnedFd) -> RawFd {
     fd.into_raw_fd()
+}
+
+fn rawfd_as_mut<'a>(fd: *mut RawFd) -> Option<&'a mut RawFd> {
+    if fd.is_null() {
+        return None;
+    }
+
+    // SAFETY: fd is non-NULL
+    let fd = unsafe { &mut *fd };
+    Some(fd)
 }
 
 #[repr(C)]
@@ -278,6 +293,55 @@ fn str_as_ref<'a>(s: *const ffi::c_char) -> Option<&'a str> {
     let s = unsafe { ffi::CStr::from_ptr(s) };
 
     s.to_str().ok()
+}
+
+#[repr(C)]
+pub struct hbm_copy_buffer {
+    src_offset: u64,
+    dst_offset: u64,
+    size: u64,
+}
+
+impl hbm_copy_buffer {
+    fn into(copy: *const Self) -> hbm::CopyBuffer {
+        // SAFETY: copy is non-NULL
+        let copy = unsafe { &*copy };
+
+        hbm::CopyBuffer {
+            src_offset: copy.src_offset,
+            dst_offset: copy.dst_offset,
+            size: copy.size,
+        }
+    }
+}
+
+#[repr(C)]
+pub struct hbm_copy_buffer_image {
+    offset: u64,
+    stride: u64,
+
+    plane: u32,
+    x: u32,
+    y: u32,
+    width: u32,
+    height: u32,
+}
+
+impl hbm_copy_buffer_image {
+    fn into(copy: *const Self) -> hbm::CopyBufferImage {
+        // SAFETY: copy is non-NULL
+        let copy = unsafe { &*copy };
+
+        hbm::CopyBufferImage {
+            offset: copy.offset,
+            stride: copy.stride,
+            plane: copy.plane,
+            x: copy.x,
+            y: copy.y,
+            width: copy.width,
+            height: copy.height,
+        }
+    }
 }
 
 /// # Safety
@@ -415,7 +479,7 @@ pub unsafe extern "C" fn hbm_bo_create(
     let dev = CDevice::as_mut(dev);
     let desc = hbm_description::into(desc);
     let extent = hbm_extent::into(extent);
-    let con = hbm_constraint::into(con);
+    let con = hbm_constraint::try_into(con);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
     let class = match dev.get_class(&mut class_cache, desc) {
@@ -443,7 +507,7 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
     let dev = CDevice::as_mut(dev);
     let desc = hbm_description::into(desc);
     let extent = hbm_extent::into(extent);
-    let dmabuf = rawfd_into(dmabuf);
+    let dmabuf = rawfd_try_into(dmabuf).unwrap();
     let layout = hbm_layout::into(layout);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
@@ -542,29 +606,30 @@ pub unsafe extern "C" fn hbm_bo_invalidate(bo: *mut hbm_bo) {
 pub unsafe extern "C" fn hbm_bo_copy_buffer(
     bo: *mut hbm_bo,
     src: *mut hbm_bo,
-    src_offset: u64,
-    dst_offset: u64,
-    size: u64,
+    copy: *const hbm_copy_buffer,
+    in_sync_fd: i32,
+    out_sync_fd: *mut i32,
 ) -> bool {
     let bo = hbm_bo::as_ref(bo);
     let src = hbm_bo::as_ref(src);
+    let copy = hbm_copy_buffer::into(copy);
+    let in_sync_fd = rawfd_try_into(in_sync_fd);
+    let out_sync_fd = rawfd_as_mut(out_sync_fd);
 
-    let copy = hbm::CopyBuffer {
-        src_offset,
-        dst_offset,
-        size,
-    };
-    // TODO takes an in-fence
-    match bo.copy_buffer(src, copy, None) {
-        Ok(sync_fd) => {
-            if let Some(_sync_fd) = sync_fd {
-                // TODO returns the out-fence such that minigbm can DMA_BUF_IOCTL_IMPORT_SYNC_FILE
-            }
-
-            true
-        }
-        _ => false,
+    let sync_fd = bo.copy_buffer(src, copy, in_sync_fd, out_sync_fd.is_none());
+    if sync_fd.is_err() {
+        return false;
     }
+
+    if let Some(out_sync_fd) = out_sync_fd {
+        *out_sync_fd = if let Some(sync_fd) = sync_fd.unwrap() {
+            rawfd_from(sync_fd)
+        } else {
+            -1
+        }
+    }
+
+    true
 }
 
 /// # Safety
@@ -572,36 +637,28 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
 pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     bo: *mut hbm_bo,
     src: *mut hbm_bo,
-    offset: u64,
-    stride: u64,
-    plane: u32,
-    x: u32,
-    y: u32,
-    width: u32,
-    height: u32,
+    copy: *const hbm_copy_buffer_image,
+    in_sync_fd: i32,
+    out_sync_fd: *mut i32,
 ) -> bool {
     let bo = hbm_bo::as_ref(bo);
     let src = hbm_bo::as_ref(src);
+    let copy = hbm_copy_buffer_image::into(copy);
+    let in_sync_fd = rawfd_try_into(in_sync_fd);
+    let out_sync_fd = rawfd_as_mut(out_sync_fd);
 
-    let copy = hbm::CopyBufferImage {
-        offset,
-        stride,
-        plane,
-        x,
-        y,
-        width,
-        height,
-    };
-
-    // TODO takes an in-fence
-    match bo.copy_buffer_image(src, copy, None) {
-        Ok(sync_fd) => {
-            if let Some(_sync_fd) = sync_fd {
-                // TODO returns the out-fence such that minigbm can DMA_BUF_IOCTL_IMPORT_SYNC_FILE
-            }
-
-            true
-        }
-        _ => false,
+    let sync_fd = bo.copy_buffer_image(src, copy, in_sync_fd, out_sync_fd.is_none());
+    if sync_fd.is_err() {
+        return false;
     }
+
+    if let Some(out_sync_fd) = out_sync_fd {
+        *out_sync_fd = if let Some(sync_fd) = sync_fd.unwrap() {
+            rawfd_from(sync_fd)
+        } else {
+            -1
+        }
+    }
+
+    true
 }

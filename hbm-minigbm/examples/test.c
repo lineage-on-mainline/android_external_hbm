@@ -22,7 +22,11 @@ die(const char *msg)
 static void
 test_image_copy(struct hbm_bo *img_bo, struct hbm_bo *buf_bo, uint32_t width, uint32_t height)
 {
-    if (!hbm_bo_copy_buffer_image(buf_bo, img_bo, 0, 0, 0, 0, 0, width, height))
+    const struct hbm_copy_buffer_image copy = {
+        .width = width,
+        .height = height,
+    };
+    if (!hbm_bo_copy_buffer_image(buf_bo, img_bo, &copy, -1, NULL))
         die("failed to copy image to buffer");
 
     void *buf_ptr = hbm_bo_map(buf_bo);
@@ -40,7 +44,7 @@ test_image_copy(struct hbm_bo *img_bo, struct hbm_bo *buf_bo, uint32_t width, ui
 
     hbm_bo_unmap(buf_bo);
 
-    if (!hbm_bo_copy_buffer_image(img_bo, buf_bo, 0, 0, 0, 0, 0, width, height))
+    if (!hbm_bo_copy_buffer_image(img_bo, buf_bo, &copy, -1, NULL))
         die("failed to copy buffer to image");
 
     void *img_ptr = hbm_bo_map(img_bo);
@@ -171,7 +175,10 @@ test_image(struct hbm_device *dev)
 static void
 test_buffer_copy(struct hbm_bo *buf_bo, struct hbm_bo *buf_dst, uint64_t buf_size)
 {
-    if (!hbm_bo_copy_buffer(buf_dst, buf_bo, 0, 0, buf_size))
+    const struct hbm_copy_buffer copy = {
+        .size = buf_size,
+    };
+    if (!hbm_bo_copy_buffer(buf_dst, buf_bo, &copy, -1, NULL))
         die("failed to copy buffer");
 
     void *buf_ptr = hbm_bo_map(buf_bo);

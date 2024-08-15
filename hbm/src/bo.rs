@@ -5,7 +5,8 @@ use super::backends::{
     Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Flags, Handle, Layout,
 };
 use super::device::Device;
-use super::types::{Error, Mapping, Result};
+use super::types::{Access, Error, Mapping, Result};
+use super::utils;
 use std::os::fd::OwnedFd;
 use std::sync::{Arc, Mutex};
 
@@ -159,14 +160,26 @@ impl Bo {
         src: &Bo,
         copy: CopyBuffer,
         sync_fd: Option<OwnedFd>,
+        sync: bool,
     ) -> Result<Option<OwnedFd>> {
         if !self.is_buffer || !src.is_buffer {
             return Err(Error::InvalidParam);
         }
 
         // what if src is from another device?
-        self.backend()
-            .copy_buffer(&self.handle, &src.handle, copy, sync_fd)
+        let ret = self
+            .backend()
+            .copy_buffer(&self.handle, &src.handle, copy, sync_fd);
+        if !sync {
+            return ret;
+        }
+
+        ret.map(|sync_fd| {
+            if let Some(sync_fd) = sync_fd {
+                let _ = utils::poll(sync_fd, Access::Read);
+            }
+            None
+        })
     }
 
     pub fn copy_buffer_image(
@@ -174,14 +187,26 @@ impl Bo {
         src: &Bo,
         copy: CopyBufferImage,
         sync_fd: Option<OwnedFd>,
+        sync: bool,
     ) -> Result<Option<OwnedFd>> {
         if self.is_buffer == src.is_buffer {
             return Err(Error::InvalidParam);
         }
 
         // what if src is from another device?
-        self.backend()
-            .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd)
+        let ret = self
+            .backend()
+            .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd);
+        if !sync {
+            return ret;
+        }
+
+        ret.map(|sync_fd| {
+            if let Some(sync_fd) = sync_fd {
+                let _ = utils::poll(sync_fd, Access::Read);
+            }
+            None
+        })
     }
 }
 
