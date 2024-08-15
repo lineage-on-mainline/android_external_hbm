@@ -21,8 +21,9 @@ bitflags::bitflags! {
         const COHERENT = 1 << 2;
         const NO_CACHE = 1 << 3;
         const NO_COMPRESSION = 1 << 4;
-        const PROTECTED = 1 << 5;
-        const PRIORITY_HIGH = 1 << 6;
+        const SCANOUT = 1 << 5;
+        const PROTECTED = 1 << 6;
+        const PRIORITY_HIGH = 1 << 7;
     }
 }
 

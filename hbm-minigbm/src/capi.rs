@@ -16,8 +16,10 @@ pub const HBM_FLAG_COHERENT: u32 = 1 << 2;
 pub const HBM_FLAG_NO_CACHE: u32 = 1 << 3;
 /// The BO must not be compressed.
 pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 4;
+/// The BO can be scanned out.
+pub const HBM_FLAG_SCANOUT: u32 = 1 << 5;
 /// The BO must be allocated from a protected heap.
-pub const HBM_FLAG_PROTECTED: u32 = 1 << 5;
+pub const HBM_FLAG_PROTECTED: u32 = 1 << 6;
 
 /// The BO can be used for GPU copies.
 pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
@@ -99,6 +101,9 @@ impl CDevice {
         }
         if (desc.flags & HBM_FLAG_NO_COMPRESSION) > 0 {
             flags |= hbm::Flags::NO_COMPRESSION;
+        }
+        if (desc.flags & HBM_FLAG_SCANOUT) > 0 {
+            flags |= hbm::Flags::SCANOUT;
         }
         if (desc.flags & HBM_FLAG_PROTECTED) > 0 {
             flags |= hbm::Flags::PROTECTED;

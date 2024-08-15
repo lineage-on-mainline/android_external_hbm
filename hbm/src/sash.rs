@@ -350,18 +350,6 @@ impl PhysicalDevice {
 
         self.properties.ext_image_drm_format_modifier =
             dev_info.extensions[ExtId::ExtImageDrmFormatModifier as usize];
-        if !self.properties.ext_image_drm_format_modifier {
-            // If we have to go ahead without VK_EXT_image_drm_format_modifier,
-            //
-            //  - we will use OPAQUE_FD as the handle type, assuming it is actually dma-buf
-            //  - we will limit VK_TILING_OPTIMAL support to non-planar formats
-            //  - we will violate VUID-vkGetImageSubresourceLayout-image-07790 for tiled images
-            //  - on import, we may or may not violate
-            //    - VUID-VkMemoryAllocateInfo-allocationSize-01742
-            //    - VUID-VkMemoryDedicatedAllocateInfo-image-01878
-            //    - VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
-            warn!("no VK_EXT_image_drm_format_modifier support");
-        }
 
         Ok(())
     }
@@ -393,6 +381,26 @@ impl PhysicalDevice {
         }
 
         self.properties.driver_id = drv_props.driver_id;
+
+        if !self.properties.ext_image_drm_format_modifier {
+            // If we have to go ahead without VK_EXT_image_drm_format_modifier,
+            //
+            //  - we will use OPAQUE_FD as the handle type, assuming it is actually dma-buf
+            //  - we will limit VK_TILING_OPTIMAL support to non-planar formats
+            //  - we will apply the scanout hack
+            //  - we will violate VUID-vkGetImageSubresourceLayout-image-07790 for tiled images
+            //  - on import, we may or may not violate
+            //    - VUID-VkMemoryAllocateInfo-allocationSize-01742
+            //    - VUID-VkMemoryDedicatedAllocateInfo-image-01878
+            //    - VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
+            //
+            // In other words, this is utterly wrong.
+            if self.properties.driver_id == vk::DriverId::MESA_RADV {
+                warn!("no VK_EXT_image_drm_format_modifier support");
+            } else {
+                return Err(Error::NoSupport);
+            }
+        }
 
         let limits = &props.limits;
         self.properties.max_image_dimension_2d = limits.max_image_dimension2_d;
@@ -580,6 +588,7 @@ pub struct ImageInfo {
     pub format: vk::Format,
     pub modifier: Modifier,
     pub no_compression: bool,
+    pub scanout_hack: bool,
 }
 
 pub struct ImageProperties {
@@ -602,7 +611,7 @@ enum PipelineBarrierType {
     ReleaseDst,
 }
 
-pub struct PipelineBarrierScope {
+struct PipelineBarrierScope {
     dependency_flags: vk::DependencyFlags,
 
     src_queue_family: u32,
@@ -615,6 +624,33 @@ pub struct PipelineBarrierScope {
     dst_access_mask: vk::AccessFlags,
     dst_image_layout: vk::ImageLayout,
 }
+
+// this is for scanout hack
+#[repr(C)]
+struct WsiImageCreateInfoMESA {
+    s_type: vk::StructureType,
+    p_next: *const ffi::c_void,
+    scanout: bool,
+    blit_src: bool,
+    pad: [u64; 4],
+}
+
+impl Default for WsiImageCreateInfoMESA {
+    fn default() -> Self {
+        Self {
+            s_type: vk::StructureType::from_raw(1000001002),
+            p_next: ptr::null(),
+            scanout: true,
+            blit_src: false,
+            pad: Default::default(),
+        }
+    }
+}
+
+// SAFETY: ok
+unsafe impl vk::ExtendsPhysicalDeviceImageFormatInfo2 for WsiImageCreateInfoMESA {}
+// SAFETY: ok
+unsafe impl vk::ExtendsImageCreateInfo for WsiImageCreateInfoMESA {}
 
 struct DeviceDispatch {
     memory: ash::khr::external_memory_fd::Device,
@@ -820,6 +856,7 @@ impl Device {
         flags: vk::ImageCreateFlags,
         usage: vk::ImageUsageFlags,
         compression: vk::ImageCompressionFlagsEXT,
+        scanout_hack: bool,
         format: vk::Format,
         modifier: Modifier,
     ) -> Result<()> {
@@ -841,6 +878,11 @@ impl Device {
         if tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
             mod_info = mod_info.drm_format_modifier(modifier.0);
             img_info = img_info.push_next(&mut mod_info)
+        }
+
+        let mut wsi_info = WsiImageCreateInfoMESA::default();
+        if scanout_hack && tiling != vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+            img_info = img_info.push_next(&mut wsi_info)
         }
 
         let mut external_props = vk::ExternalImageFormatProperties::default();
@@ -927,6 +969,7 @@ impl Device {
                         img_info.flags,
                         img_info.usage,
                         compression,
+                        img_info.scanout_hack,
                         img_info.format,
                         candidate,
                     )
@@ -1931,6 +1974,7 @@ impl Image {
         } else {
             vk::ImageCompressionFlagsEXT::DEFAULT
         };
+        let scanout_hack = img_info.scanout_hack;
 
         let extent = vk::Extent3D {
             width,
@@ -1958,6 +2002,11 @@ impl Image {
         if compression != vk::ImageCompressionFlagsEXT::DEFAULT {
             comp_info = comp_info.flags(compression);
             img_info = img_info.push_next(&mut comp_info);
+        }
+
+        let mut wsi_info = WsiImageCreateInfoMESA::default();
+        if scanout_hack && tiling != vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+            img_info = img_info.push_next(&mut wsi_info)
         }
 
         // SAFETY: ok

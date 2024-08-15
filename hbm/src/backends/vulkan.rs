@@ -108,6 +108,7 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
         format: img_format,
         modifier: desc.modifier,
         no_compression: desc.flags.contains(Flags::NO_COMPRESSION),
+        scanout_hack: desc.flags.contains(Flags::SCANOUT),
     };
 
     Ok(img_info)
