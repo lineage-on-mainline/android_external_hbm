@@ -15,8 +15,8 @@ pub const HBM_FLAG_PROTECTED: u32 = 1 << 5;
 
 pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
 pub const HBM_USAGE_GPU_UNIFORM: u64 = 1u64 << 1;
-pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 3;
-pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 4;
+pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 2;
+pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 3;
 pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
 
 #[repr(C)]
