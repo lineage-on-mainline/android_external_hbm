@@ -8,7 +8,6 @@ authors = ["Chia-I Wu"]
 edition = "2021"
 repository = "https://gitlab.freedesktop.org/olv/hbm"
 license = "MIT"
-license-file = "LICENSE"
 keywords = ["graphics", "gbm", "minigbm", "gralloc"]
 categories = ["hardware-support", "graphics", "multimedia"]
 
