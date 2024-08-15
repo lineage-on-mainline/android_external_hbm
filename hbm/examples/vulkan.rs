@@ -64,8 +64,12 @@ fn test_image(dev: Arc<hbm::Device>) {
     let buf_bo =
         hbm::Bo::new(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None).unwrap();
 
-    buf_bo.copy_buffer_image(&img_bo, img_copy, None).unwrap();
-    img_bo.copy_buffer_image(&buf_bo, img_copy, None).unwrap();
+    buf_bo
+        .copy_buffer_image(&img_bo, img_copy, None, true)
+        .unwrap();
+    img_bo
+        .copy_buffer_image(&buf_bo, img_copy, None, true)
+        .unwrap();
 }
 
 fn test_buffer(dev: Arc<hbm::Device>) {
@@ -102,7 +106,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
     };
     let buf_src =
         hbm::Bo::new(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None).unwrap();
-    buf_bo.copy_buffer(&buf_src, buf_copy, None).unwrap();
+    buf_bo.copy_buffer(&buf_src, buf_copy, None, true).unwrap();
 }
 
 fn main() {
