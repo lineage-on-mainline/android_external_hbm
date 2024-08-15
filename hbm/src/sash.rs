@@ -17,6 +17,7 @@ const REQUIRED_API_VERSION: u32 = vk::API_VERSION_1_1;
 // TODO VK_KHR_external_semaphore_fd
 #[derive(Clone, Copy)]
 enum ExtId {
+    KhrDriverProperties,
     KhrExternalMemoryFd,
     KhrImageFormatList,
     KhrMaintenance4,
@@ -31,6 +32,7 @@ enum ExtId {
 
 #[rustfmt::skip]
 const EXT_TABLE: [(ExtId, &ffi::CStr, bool); ExtId::Count as usize] = [
+    (ExtId::KhrDriverProperties,        ash::khr::driver_properties::NAME,          false),
     (ExtId::KhrExternalMemoryFd,        ash::khr::external_memory_fd::NAME,         true),
     (ExtId::KhrImageFormatList,         ash::khr::image_format_list::NAME,          false),
     (ExtId::KhrMaintenance4,            ash::khr::maintenance4::NAME,               true),
@@ -231,6 +233,7 @@ struct DeviceCreateInfo {
 struct PhysicalDeviceProperties {
     ext_image_drm_format_modifier: bool,
 
+    driver_id: vk::DriverId,
     max_image_dimension_2d: u32,
     max_uniform_buffer_range: u32,
     max_storage_buffer_range: u32,
@@ -365,7 +368,10 @@ impl PhysicalDevice {
 
     fn probe_properties(&mut self, dev_id: Option<u64>) -> Result<()> {
         let mut maint4_props = vk::PhysicalDeviceMaintenance4Properties::default();
-        let mut props = vk::PhysicalDeviceProperties2::default().push_next(&mut maint4_props);
+        let mut drv_props = vk::PhysicalDeviceDriverProperties::default();
+        let mut props = vk::PhysicalDeviceProperties2::default()
+            .push_next(&mut maint4_props)
+            .push_next(&mut drv_props);
 
         let mut drm_props = vk::PhysicalDeviceDrmPropertiesEXT::default();
         if dev_id.is_some() {
@@ -385,6 +391,8 @@ impl PhysicalDevice {
         if let Some(dev_id) = dev_id {
             has_device_id(drm_props, dev_id)?;
         }
+
+        self.properties.driver_id = drv_props.driver_id;
 
         let limits = &props.limits;
         self.properties.max_image_dimension_2d = limits.max_image_dimension2_d;
