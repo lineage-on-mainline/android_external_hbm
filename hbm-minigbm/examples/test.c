@@ -91,8 +91,7 @@ static void
 test_image(struct hbm_device *dev)
 {
     const struct hbm_description img_desc = {
-        .flags = HBM_FLAG_MAPPABLE,
-        .usage = HBM_USAGE_TRANSFER,
+        .flags = HBM_FLAG_MAP | HBM_FLAG_COPY,
         .format = DRM_FORMAT_R8,
         .modifier = DRM_FORMAT_MOD_LINEAR,
     };
@@ -120,11 +119,13 @@ test_image(struct hbm_device *dev)
         free(mods);
     }
 
-    const struct hbm_extent_2d img_extent = {
-        .width = 13,
-        .height = 31,
+    const union hbm_extent img_extent = {
+        .image = {
+            .width = 13,
+            .height = 31,
+        },
     };
-    struct hbm_bo *img_bo = hbm_bo_create(dev, &img_desc, (void *)&img_extent, NULL);
+    struct hbm_bo *img_bo = hbm_bo_create(dev, &img_desc, &img_extent, NULL);
     if (!img_bo)
         die("failed to create image bo");
 
@@ -136,28 +137,31 @@ test_image(struct hbm_device *dev)
     if (!hbm_bo_layout(img_bo, &img_layout))
         die("failed to get image layout");
 
-    test_image_map(img_bo, img_extent.width, img_extent.height, img_layout.strides[0], true);
+    test_image_map(img_bo, img_extent.image.width, img_extent.image.height, img_layout.strides[0],
+                   true);
 
     hbm_bo_destroy(img_bo);
 
-    img_bo = hbm_bo_import_dma_buf(dev, &img_desc, (void *)&img_extent, img_dmabuf, &img_layout);
+    img_bo = hbm_bo_import_dma_buf(dev, &img_desc, &img_extent, img_dmabuf, &img_layout);
     if (!img_bo)
         die("failed to import image dma-buf");
 
-    test_image_map(img_bo, img_extent.width, img_extent.height, img_layout.strides[0], false);
+    test_image_map(img_bo, img_extent.image.width, img_extent.image.height, img_layout.strides[0],
+                   false);
 
     {
         const struct hbm_description tmp_desc = {
-            .flags = HBM_FLAG_MAPPABLE,
-            .usage = HBM_USAGE_TRANSFER,
+            .flags = HBM_FLAG_MAP | HBM_FLAG_COPY,
             .format = DRM_FORMAT_INVALID,
             .modifier = DRM_FORMAT_MOD_INVALID,
         };
-        const struct hbm_extent_1d tmp_extent = {
-            .size = img_extent.width * img_extent.height,
+        const union hbm_extent tmp_extent = {
+            .buffer = {
+                .size = img_extent.image.width * img_extent.image.height,
+            },
         };
-        struct hbm_bo *tmp_bo = hbm_bo_create(dev, &tmp_desc, (void *)&tmp_extent, NULL);
-        test_image_copy(img_bo, tmp_bo, img_extent.width, img_extent.height);
+        struct hbm_bo *tmp_bo = hbm_bo_create(dev, &tmp_desc, &tmp_extent, NULL);
+        test_image_copy(img_bo, tmp_bo, img_extent.image.width, img_extent.image.height);
         hbm_bo_destroy(tmp_bo);
     }
 
@@ -214,8 +218,7 @@ static void
 test_buffer(struct hbm_device *dev)
 {
     const struct hbm_description buf_desc = {
-        .flags = HBM_FLAG_MAPPABLE,
-        .usage = HBM_USAGE_TRANSFER,
+        .flags = HBM_FLAG_MAP | HBM_FLAG_COPY,
         .format = DRM_FORMAT_INVALID,
         .modifier = DRM_FORMAT_MOD_INVALID,
     };
@@ -223,10 +226,12 @@ test_buffer(struct hbm_device *dev)
     if (hbm_device_get_modifiers(dev, &buf_desc, NULL) != 0)
         die("unexpeted buffer modifiers");
 
-    const struct hbm_extent_1d buf_extent = {
-        .size = 13,
+    const union hbm_extent buf_extent = {
+        .buffer = {
+            .size = 13,
+        },
     };
-    struct hbm_bo *buf_bo = hbm_bo_create(dev, &buf_desc, (void *)&buf_extent, NULL);
+    struct hbm_bo *buf_bo = hbm_bo_create(dev, &buf_desc, &buf_extent, NULL);
     if (!buf_bo)
         die("failed to create buffer bo");
 
@@ -238,19 +243,19 @@ test_buffer(struct hbm_device *dev)
     if (!hbm_bo_layout(buf_bo, &buf_layout))
         die("failed to get buffer layout");
 
-    test_buffer_map(buf_bo, buf_extent.size, true);
+    test_buffer_map(buf_bo, buf_extent.buffer.size, true);
 
     hbm_bo_destroy(buf_bo);
 
-    buf_bo = hbm_bo_import_dma_buf(dev, &buf_desc, (void *)&buf_extent, buf_dmabuf, &buf_layout);
+    buf_bo = hbm_bo_import_dma_buf(dev, &buf_desc, &buf_extent, buf_dmabuf, &buf_layout);
     if (!buf_bo)
         die("failed to import buffer dma-buf");
 
-    test_buffer_map(buf_bo, buf_extent.size, false);
+    test_buffer_map(buf_bo, buf_extent.buffer.size, false);
 
     {
-        struct hbm_bo *tmp_bo = hbm_bo_create(dev, &buf_desc, (void *)&buf_extent, NULL);
-        test_buffer_copy(buf_bo, tmp_bo, buf_extent.size);
+        struct hbm_bo *tmp_bo = hbm_bo_create(dev, &buf_desc, &buf_extent, NULL);
+        test_buffer_copy(buf_bo, tmp_bo, buf_extent.buffer.size);
         hbm_bo_destroy(tmp_bo);
     }
 
@@ -270,7 +275,7 @@ main(void)
 
     hbm_log_init(HBM_LOG_LEVEL_DEBUG, test_log, NULL);
 
-    struct hbm_device *dev = hbm_device_create(dev_id);
+    struct hbm_device *dev = hbm_device_create(dev_id, false);
     if (!dev)
         die("failed to create device");
 

@@ -1,23 +1,23 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use libc::dev_t;
 use std::collections::{hash_map::Entry, HashMap};
 use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
 use std::{ffi, ptr, slice};
 
-pub const HBM_FLAG_MAPPABLE: u32 = 1 << 0;
-pub const HBM_FLAG_COHERENT: u32 = 1 << 1;
-pub const HBM_FLAG_NO_CACHE: u32 = 1 << 2;
-pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 3;
-pub const HBM_FLAG_PROTECTED: u32 = 1 << 4;
+pub const HBM_FLAG_MAP: u32 = 1 << 0;
+pub const HBM_FLAG_COPY: u32 = 1 << 1;
+pub const HBM_FLAG_COHERENT: u32 = 1 << 2;
+pub const HBM_FLAG_NO_CACHE: u32 = 1 << 3;
+pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 4;
+pub const HBM_FLAG_PROTECTED: u32 = 1 << 5;
 
-// GPU
-pub const HBM_USAGE_TRANSFER: u64 = 1u64 << 0;
-pub const HBM_USAGE_STORAGE: u64 = 1u64 << 1;
-pub const HBM_USAGE_SAMPLED: u64 = 1u64 << 2;
-pub const HBM_USAGE_COLOR: u64 = 1u64 << 3;
+pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
+pub const HBM_USAGE_GPU_UNIFORM: u64 = 1u64 << 1;
+pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 3;
+pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 4;
+pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
 
 #[repr(C)]
 pub enum hbm_log_level {
@@ -58,13 +58,16 @@ impl CDevice {
 
     fn as_mut<'a>(dev: *mut hbm_device) -> &'a mut Self {
         // SAFETY: dev was created by Self::into
-        unsafe { &mut *(dev as *mut CDevice) }
+        unsafe { &mut *(dev as *mut Self) }
     }
 
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
         let mut flags = hbm::Flags::empty();
-        if (desc.flags & HBM_FLAG_MAPPABLE) > 0 {
+        if (desc.flags & HBM_FLAG_MAP) > 0 {
             flags |= hbm::Flags::MAP;
+        }
+        if (desc.flags & HBM_FLAG_COPY) > 0 {
+            flags |= hbm::Flags::COPY;
         }
         if (desc.flags & HBM_FLAG_COHERENT) > 0 {
             flags |= hbm::Flags::COHERENT;
@@ -79,25 +82,28 @@ impl CDevice {
             flags |= hbm::Flags::PROTECTED;
         }
 
-        let mut usage = hbm::vulkan::Usage::empty();
-        if (desc.usage & HBM_USAGE_TRANSFER) > 0 {
-            usage |= hbm::vulkan::Usage::TRANSFER;
+        let mut vk_usage = hbm::vulkan::Usage::empty();
+        if (desc.usage & HBM_USAGE_GPU_TRANSFER) > 0 {
+            vk_usage |= hbm::vulkan::Usage::TRANSFER;
         }
-        if (desc.usage & HBM_USAGE_STORAGE) > 0 {
-            usage |= hbm::vulkan::Usage::STORAGE;
+        if (desc.usage & HBM_USAGE_GPU_UNIFORM) > 0 {
+            vk_usage |= hbm::vulkan::Usage::UNIFORM;
         }
-        if (desc.usage & HBM_USAGE_SAMPLED) > 0 {
-            usage |= hbm::vulkan::Usage::SAMPLED;
+        if (desc.usage & HBM_USAGE_GPU_STORAGE) > 0 {
+            vk_usage |= hbm::vulkan::Usage::STORAGE;
         }
-        if (desc.usage & HBM_USAGE_COLOR) > 0 {
-            usage |= hbm::vulkan::Usage::COLOR;
+        if (desc.usage & HBM_USAGE_GPU_SAMPLED) > 0 {
+            vk_usage |= hbm::vulkan::Usage::SAMPLED;
+        }
+        if (desc.usage & HBM_USAGE_GPU_COLOR) > 0 {
+            vk_usage |= hbm::vulkan::Usage::COLOR;
         }
 
         let desc = hbm::Description::new()
             .flags(flags)
             .format(hbm::Format(desc.format))
             .modifier(hbm::Modifier(desc.modifier));
-        let usage = hbm::Usage::Vulkan(usage);
+        let usage = hbm::Usage::Vulkan(vk_usage);
 
         self.device.classify(desc, slice::from_ref(&usage))
     }
@@ -129,7 +135,7 @@ pub struct hbm_description {
 }
 
 impl hbm_description {
-    fn from(desc: *const Self) -> Self {
+    fn into(desc: *const Self) -> Self {
         // SAFETY: desc is non-NULL
         unsafe { *desc }
     }
@@ -137,29 +143,29 @@ impl hbm_description {
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-struct hbm_extent_1d {
+struct hbm_extent_buffer {
     size: u64,
 }
 
 #[derive(Clone, Copy)]
 #[repr(C)]
-struct hbm_extent_2d {
+struct hbm_extent_image {
     width: u32,
     height: u32,
 }
 
 #[repr(C)]
 pub union hbm_extent {
-    _1d: hbm_extent_1d,
-    _2d: hbm_extent_2d,
+    buffer: hbm_extent_buffer,
+    image: hbm_extent_image,
 }
 
 impl hbm_extent {
-    fn into(extent: *const hbm_extent) -> hbm::Extent {
+    fn into(extent: *const Self) -> hbm::Extent {
         // SAFETY: extent is non-NULL
         let extent = unsafe { &*extent };
         // SAFETY: we just need the raw bits
-        let size = unsafe { extent._1d.size };
+        let size = unsafe { extent.buffer.size };
 
         hbm::Extent::new_1d(size)
     }
@@ -176,7 +182,7 @@ pub struct hbm_constraint {
 }
 
 impl hbm_constraint {
-    fn into(con: *const hbm_constraint) -> Option<hbm::Constraint> {
+    fn into(con: *const Self) -> Option<hbm::Constraint> {
         if con.is_null() {
             return None;
         }
@@ -205,9 +211,9 @@ pub struct hbm_bo {
 }
 
 impl hbm_bo {
-    fn from(bo: hbm::Bo) -> *mut hbm_bo {
+    fn from(bo: hbm::Bo) -> *mut Self {
         let bo = Box::new(bo);
-        Box::into_raw(bo) as *mut hbm_bo
+        Box::into_raw(bo) as *mut Self
     }
 
     fn into(bo: *mut Self) -> Box<hbm::Bo> {
@@ -226,13 +232,13 @@ impl hbm_bo {
     }
 }
 
-fn dmabuf_from(dmabuf: i32) -> OwnedFd {
-    // SAFETY: dmabuf is valid by contract
-    unsafe { OwnedFd::from_raw_fd(dmabuf) }
+fn rawfd_into(fd: RawFd) -> OwnedFd {
+    // SAFETY: fd is valid
+    unsafe { OwnedFd::from_raw_fd(fd) }
 }
 
-fn dmabuf_into(dmabuf: OwnedFd) -> RawFd {
-    dmabuf.into_raw_fd()
+fn rawfd_from(fd: OwnedFd) -> RawFd {
+    fd.into_raw_fd()
 }
 
 #[repr(C)]
@@ -257,7 +263,7 @@ impl hbm_layout {
             .strides(layout.strides)
     }
 
-    fn as_mut<'a>(layout: *mut hbm_layout) -> &'a mut hbm_layout {
+    fn as_mut<'a>(layout: *mut Self) -> &'a mut Self {
         // SAFETY: layout is non_NULL
         unsafe { &mut *layout }
     }
@@ -318,8 +324,12 @@ pub unsafe extern "C" fn hbm_log_init(
 
 /// # Safety
 #[no_mangle]
-pub unsafe extern "C" fn hbm_device_create(dev: dev_t) -> *mut hbm_device {
-    let backend = match hbm::vulkan::Builder::new().device_id(dev).build() {
+pub unsafe extern "C" fn hbm_device_create(dev: libc::dev_t, debug: bool) -> *mut hbm_device {
+    let backend = match hbm::vulkan::Builder::new()
+        .device_id(dev)
+        .debug(debug)
+        .build()
+    {
         Ok(backend) => backend,
         _ => return ptr::null_mut(),
     };
@@ -368,7 +378,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     out_mods: *mut u64,
 ) -> i32 {
     let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::from(desc);
+    let desc = hbm_description::into(desc);
 
     // TODO is it possible to reduce lock scope?
     let mut class_cache = dev.class_cache.lock().unwrap();
@@ -383,7 +393,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     };
 
     if !out_mods.is_null() {
-        // SAFETY: out_mods must be large enough for mods.len() modifiers
+        // SAFETY: out_mods is large enough for mods.len() modifiers
         let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mods.len()) };
 
         for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
@@ -403,7 +413,7 @@ pub unsafe extern "C" fn hbm_bo_create(
     con: *const hbm_constraint,
 ) -> *mut hbm_bo {
     let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::from(desc);
+    let desc = hbm_description::into(desc);
     let extent = hbm_extent::into(extent);
     let con = hbm_constraint::into(con);
 
@@ -431,9 +441,9 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
     layout: *const hbm_layout,
 ) -> *mut hbm_bo {
     let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::from(desc);
+    let desc = hbm_description::into(desc);
     let extent = hbm_extent::into(extent);
-    let dmabuf = dmabuf_from(dmabuf);
+    let dmabuf = rawfd_into(dmabuf);
     let layout = hbm_layout::into(layout);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
@@ -467,7 +477,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
         _ => return -1,
     };
 
-    dmabuf_into(dmabuf)
+    rawfd_from(dmabuf)
 }
 
 /// # Safety
