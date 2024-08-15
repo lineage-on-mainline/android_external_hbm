@@ -235,6 +235,7 @@ struct PhysicalDeviceProperties {
     ext_image_drm_format_modifier: bool,
 
     max_image_dimension_2d: u32,
+    max_uniform_buffer_range: u32,
     max_storage_buffer_range: u32,
     max_buffer_size: Size,
 
@@ -374,6 +375,7 @@ impl PhysicalDevice {
 
         let limits = &props.limits;
         self.properties.max_image_dimension_2d = limits.max_image_dimension2_d;
+        self.properties.max_uniform_buffer_range = limits.max_uniform_buffer_range;
         self.properties.max_storage_buffer_range = limits.max_storage_buffer_range;
         self.properties.max_buffer_size = maint4_props.max_buffer_size;
 
@@ -752,6 +754,12 @@ impl Device {
         can_export_import(external_props.external_memory_properties)?;
 
         let mut max_size = self.properties().max_buffer_size;
+        if buf_info
+            .usage
+            .contains(vk::BufferUsageFlags::UNIFORM_BUFFER)
+        {
+            max_size = cmp::min(max_size, self.properties().max_uniform_buffer_range as u64);
+        }
         if buf_info
             .usage
             .contains(vk::BufferUsageFlags::STORAGE_BUFFER)
