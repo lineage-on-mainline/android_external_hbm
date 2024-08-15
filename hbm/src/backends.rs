@@ -16,12 +16,13 @@ use std::os::fd::OwnedFd;
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     pub struct Flags: u32 {
-        const MAPPABLE = 1 << 0;
-        const COHERENT = 1 << 1;
-        const NO_CACHE = 1 << 2;
-        const NO_COMPRESSION = 1 << 3;
-        const PROTECTED = 1 << 4;
-        const PRIORITY_HIGH = 1 << 5;
+        const MAP = 1 << 0;
+        const COPY = 1 << 1;
+        const COHERENT = 1 << 2;
+        const NO_CACHE = 1 << 3;
+        const NO_COMPRESSION = 1 << 4;
+        const PROTECTED = 1 << 5;
+        const PRIORITY_HIGH = 1 << 6;
     }
 }
 

@@ -64,7 +64,7 @@ impl CDevice {
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
         let mut flags = hbm::Flags::empty();
         if (desc.flags & HBM_FLAG_MAPPABLE) > 0 {
-            flags |= hbm::Flags::MAPPABLE;
+            flags |= hbm::Flags::MAP;
         }
         if (desc.flags & HBM_FLAG_COHERENT) > 0 {
             flags |= hbm::Flags::COHERENT;

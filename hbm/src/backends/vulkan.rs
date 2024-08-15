@@ -18,14 +18,15 @@ bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
     pub struct Usage: u32 {
         const TRANSFER = 1 << 0;
-        const STORAGE = 1 << 1;
-        const SAMPLED = 1 << 2;
-        const COLOR = 1 << 3;
+        const UNIFORM = 1 << 1;
+        const STORAGE = 1 << 2;
+        const SAMPLED = 1 << 3;
+        const COLOR = 1 << 4;
     }
 }
 
 fn get_usage(usage: super::Usage, valid_usage: Usage) -> Result<Usage> {
-    let mut usage = match usage {
+    let usage = match usage {
         super::Usage::Vulkan(usage) => usage,
         _ => return Err(Error::InvalidParam),
     };
@@ -34,16 +35,11 @@ fn get_usage(usage: super::Usage, valid_usage: Usage) -> Result<Usage> {
         return Err(Error::InvalidParam);
     }
 
-    usage &= valid_usage;
-    if usage.bits() == 0 {
-        return Err(Error::InvalidParam);
-    }
-
     Ok(usage)
 }
 
 fn get_buffer_info(desc: Description, usage: super::Usage) -> Result<sash::BufferInfo> {
-    let valid_usage = Usage::TRANSFER | Usage::STORAGE;
+    let valid_usage = Usage::TRANSFER | Usage::UNIFORM | Usage::STORAGE;
     let usage = get_usage(usage, valid_usage)?;
 
     let mut buf_flags = vk::BufferCreateFlags::empty();
@@ -53,11 +49,19 @@ fn get_buffer_info(desc: Description, usage: super::Usage) -> Result<sash::Buffe
         buf_flags |= vk::BufferCreateFlags::PROTECTED;
     }
 
-    if usage.contains(Usage::TRANSFER) {
+    if desc.flags.contains(Flags::COPY) || usage.contains(Usage::TRANSFER) {
         buf_usage |= vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST;
+    }
+    if usage.contains(Usage::UNIFORM) {
+        buf_usage |= vk::BufferUsageFlags::UNIFORM_BUFFER;
     }
     if usage.contains(Usage::STORAGE) {
         buf_usage |= vk::BufferUsageFlags::STORAGE_BUFFER;
+    }
+
+    // vulkan requires buf_usage to be non-empty
+    if buf_usage.is_empty() {
+        buf_usage |= vk::BufferUsageFlags::TRANSFER_SRC;
     }
 
     let buf_info = sash::BufferInfo {
@@ -80,7 +84,7 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
         img_flags |= vk::ImageCreateFlags::PROTECTED;
     }
 
-    if usage.contains(Usage::TRANSFER) {
+    if desc.flags.contains(Flags::COPY) || usage.contains(Usage::TRANSFER) {
         img_usage |= vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
     }
     if usage.contains(Usage::STORAGE) {
@@ -91,6 +95,11 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
     }
     if usage.contains(Usage::COLOR) {
         img_usage |= vk::ImageUsageFlags::COLOR_ATTACHMENT;
+    }
+
+    // vulkan requires img_usage to be non-empty
+    if img_usage.is_empty() {
+        img_usage |= vk::ImageUsageFlags::TRANSFER_SRC;
     }
 
     let img_info = sash::ImageInfo {
@@ -110,7 +119,7 @@ fn get_memory_info(desc: Description) -> sash::MemoryInfo {
     let mut optional_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL;
     let mut priority = 0.5;
 
-    if desc.flags.contains(Flags::MAPPABLE) {
+    if desc.flags.contains(Flags::MAP) {
         required_flags |= vk::MemoryPropertyFlags::HOST_VISIBLE;
 
         if desc.flags.contains(Flags::COHERENT) {

@@ -13,7 +13,7 @@ fn main() {
     let dev = hbm::Builder::new().add_backend(backend).build().unwrap();
 
     let bo_desc = hbm::Description::new()
-        .flags(Flags::MAPPABLE)
+        .flags(Flags::MAP)
         .format(Format::new(DrmFourcc::Xrgb8888 as u32))
         .modifier(DrmModifier::Linear.into());
     let bo_usage = Usage::DrmKms(hbm::drm_kms::Usage::OVERLAY);

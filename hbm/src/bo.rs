@@ -72,7 +72,7 @@ impl Bo {
 
     fn with_handle(device: Arc<Device>, class: &Class, mut handle: Handle) -> Self {
         let is_buffer = class.description.is_buffer();
-        let mappable = class.description.flags.contains(Flags::MAPPABLE);
+        let mappable = class.description.flags.contains(Flags::MAP);
 
         handle.backend_index = class.backend_index;
 
