@@ -181,9 +181,9 @@ pub struct Backend {
 }
 
 impl Backend {
-    fn new(device_index: Option<usize>, device_id: Option<u64>) -> Result<Self> {
+    fn new(device_index: Option<usize>, device_id: Option<u64>, debug: bool) -> Result<Self> {
         let backend = Self {
-            device: sash::Device::build("hbm", device_index, device_id)?,
+            device: sash::Device::build("hbm", device_index, device_id, debug)?,
         };
 
         info!("vulkan backend initialized");
@@ -392,6 +392,7 @@ impl super::Backend for Backend {
 pub struct Builder {
     device_index: Option<usize>,
     device_id: Option<u64>,
+    debug: bool,
 }
 
 impl Builder {
@@ -410,6 +411,11 @@ impl Builder {
         self
     }
 
+    pub fn debug(mut self, debug: bool) -> Self {
+        self.debug = debug;
+        self
+    }
+
     pub fn build(mut self) -> Result<Backend> {
         match self.device_index.is_some() as i32 + self.device_id.is_some() as i32 {
             0 => {
@@ -421,6 +427,6 @@ impl Builder {
             }
         };
 
-        Backend::new(self.device_index, self.device_id)
+        Backend::new(self.device_index, self.device_id, self.debug)
     }
 }

@@ -596,9 +596,13 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn build(name: &str, dev_idx: Option<usize>, dev_id: Option<u64>) -> Result<Arc<Device>> {
+    pub fn build(
+        name: &str,
+        dev_idx: Option<usize>,
+        dev_id: Option<u64>,
+        debug: bool,
+    ) -> Result<Arc<Device>> {
         debug!("initializing vulkan instance");
-        let debug = cfg!(debug_assertions);
         let instance = Instance::new(name, debug)?;
 
         debug!("initializing vulkan physical device");
