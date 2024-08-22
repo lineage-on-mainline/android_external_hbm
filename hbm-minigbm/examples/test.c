@@ -100,7 +100,7 @@ test_image(struct hbm_device *dev)
         .modifier = DRM_FORMAT_MOD_LINEAR,
     };
 
-    int mod_count = hbm_device_get_modifiers(dev, &img_desc, NULL);
+    const int mod_count = hbm_device_get_modifiers(dev, &img_desc, 0, NULL);
     if (mod_count < 0)
         die("failed to get image modifiers");
     if (mod_count > 0) {
@@ -108,7 +108,7 @@ test_image(struct hbm_device *dev)
         if (!mods)
             die("failed to allocate modifiers");
 
-        if (hbm_device_get_modifiers(dev, &img_desc, mods) != mod_count)
+        if (hbm_device_get_modifiers(dev, &img_desc, mod_count, mods) != mod_count)
             die("unexpected image modifier count change");
 
         if (img_desc.modifier != DRM_FORMAT_MOD_INVALID) {
@@ -230,7 +230,7 @@ test_buffer(struct hbm_device *dev)
         .modifier = DRM_FORMAT_MOD_INVALID,
     };
 
-    if (hbm_device_get_modifiers(dev, &buf_desc, NULL) != 0)
+    if (hbm_device_get_modifiers(dev, &buf_desc, 0, NULL) != 0)
         die("unexpeted buffer modifiers");
 
     const union hbm_extent buf_extent = {
