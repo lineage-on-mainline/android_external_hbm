@@ -23,6 +23,7 @@ than via cargo.
   - quirk device and quirks
   - thread safety
   - error reporting
+  - require modifiers
   - validations
   - `no_std`
   - cleanups

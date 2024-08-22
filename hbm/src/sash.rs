@@ -395,6 +395,8 @@ impl PhysicalDevice {
             //    - VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
             //
             // In other words, this is utterly wrong.
+            //
+            // TODO add modifiers to amdgpu gfx8
             if self.properties.driver_id == vk::DriverId::MESA_RADV {
                 warn!("no VK_EXT_image_drm_format_modifier support");
             } else {
