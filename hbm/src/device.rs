@@ -17,10 +17,6 @@ impl Device {
             return Err(Error::InvalidParam);
         }
 
-        if modifier.is_linear() {
-            return formats::plane_count(fmt);
-        }
-
         for backend in &self.backends {
             if let Ok(count) = backend.plane_count(fmt, modifier) {
                 return Ok(count);
