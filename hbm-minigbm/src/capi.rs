@@ -533,11 +533,12 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
 ///
 /// `desc` must be non-NULL.
 ///
-/// If `out_mods` is non-NULL, it must point to a large enough array.
+/// If `out_mods` is non-NULL, it must point to a large enough array of at least `mod_max` elements.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_device_get_modifiers(
     dev: *mut hbm_device,
     desc: *const hbm_description,
+    mod_max: u32,
     out_mods: *mut u64,
 ) -> i32 {
     let dev = CDevice::as_mut(dev);
@@ -555,16 +556,21 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
         None => return 0,
     };
 
-    if !out_mods.is_null() {
-        // SAFETY: out_mods is large enough for mods.len() modifiers
-        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mods.len()) };
+    let mut mod_len = mods.len();
+    if mod_max > 0 {
+        if mod_len > mod_max as _ {
+            mod_len = mod_max as _;
+        }
+
+        // SAFETY: out_mods is large enough for mod_max modifiers
+        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_len) };
 
         for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
             *dst = src.0;
         }
     }
 
-    mods.len() as i32
+    mod_len as i32
 }
 
 /// Allocates a BO.
