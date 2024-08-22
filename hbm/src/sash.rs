@@ -1004,6 +1004,23 @@ impl Device {
         Ok(props)
     }
 
+    fn get_dma_buf_mt_mask(&self, dmabuf: &OwnedFd) -> Result<u32> {
+        // ignore self.properties().external_memory_type
+        let external_memory_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
+
+        let mut fd_props = vk::MemoryFdPropertiesKHR::default();
+        // SAFETY: ok
+        unsafe {
+            self.dispatch.memory.get_memory_fd_properties(
+                external_memory_type,
+                dmabuf.as_raw_fd(),
+                &mut fd_props,
+            )
+        }?;
+
+        Ok(fd_props.memory_type_bits)
+    }
+
     fn get_image_subresource_aspect(
         &self,
         tiling: vk::ImageTiling,
@@ -1456,116 +1473,50 @@ pub struct Memory {
 }
 
 impl Memory {
-    fn new(device: Arc<Device>) -> Self {
-        Memory {
-            device,
-            handle: Default::default(),
-            size: 0,
-        }
-    }
+    fn with_buffer(buf: &Buffer, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<Self> {
+        let mt_index = buf.device.find_mt(buf.mt_mask, &mem_info)?;
+        let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf.handle);
 
-    fn get_buffer_requirements(&self, buf_handle: vk::Buffer) -> vk::MemoryRequirements {
-        let reqs_info = vk::BufferMemoryRequirementsInfo2::default().buffer(buf_handle);
-        let mut reqs = vk::MemoryRequirements2::default();
-
-        // SAFETY: good
-        unsafe {
-            self.device
-                .handle
-                .get_buffer_memory_requirements2(&reqs_info, &mut reqs);
-        }
-
-        reqs.memory_requirements
-    }
-
-    fn init_with_buffer(
-        &mut self,
-        buf_handle: vk::Buffer,
-        mem_info: MemoryInfo,
-        size_align: vk::DeviceSize,
-        import: Option<(OwnedFd, Layout)>,
-    ) -> Result<()> {
-        let reqs = self.get_buffer_requirements(buf_handle);
-        let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf_handle);
-
-        self.init_with_requirements(reqs, dedicated_info, mem_info, size_align, import)
-    }
-
-    fn get_image_requirements(&self, img_handle: vk::Image) -> vk::MemoryRequirements {
-        let reqs_info = vk::ImageMemoryRequirementsInfo2::default().image(img_handle);
-        let mut reqs = vk::MemoryRequirements2::default();
-
-        // SAFETY: good
-        unsafe {
-            self.device
-                .handle
-                .get_image_memory_requirements2(&reqs_info, &mut reqs)
+        let handle = Self::allocate_memory(
+            &buf.device,
+            buf.size,
+            mt_index,
+            dedicated_info,
+            mem_info.priority,
+            dmabuf,
+        )?;
+        let mem = Self {
+            device: buf.device.clone(),
+            handle,
+            size: buf.size,
         };
 
-        reqs.memory_requirements
+        Ok(mem)
     }
 
-    fn init_with_image(
-        &mut self,
-        img_handle: vk::Image,
-        mem_info: MemoryInfo,
-        size_align: vk::DeviceSize,
-        import: Option<(OwnedFd, Layout)>,
-    ) -> Result<()> {
-        let reqs = self.get_image_requirements(img_handle);
-        let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(img_handle);
+    fn with_image(img: &Image, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<Self> {
+        let mt_index = img.device.find_mt(img.mt_mask, &mem_info)?;
+        let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(img.handle);
 
-        self.init_with_requirements(reqs, dedicated_info, mem_info, size_align, import)
-    }
+        let handle = Self::allocate_memory(
+            &img.device,
+            img.size,
+            mt_index,
+            dedicated_info,
+            mem_info.priority,
+            dmabuf,
+        )?;
+        let mem = Self {
+            device: img.device.clone(),
+            handle,
+            size: img.size,
+        };
 
-    fn get_dma_buf_mt_mask(&self, dmabuf: &OwnedFd) -> Result<u32> {
-        // ignore self.device.properties().external_memory_type
-        let external_memory_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
-
-        let mut fd_props = vk::MemoryFdPropertiesKHR::default();
-        // SAFETY: ok
-        unsafe {
-            self.device.dispatch.memory.get_memory_fd_properties(
-                external_memory_type,
-                dmabuf.as_raw_fd(),
-                &mut fd_props,
-            )
-        }?;
-
-        Ok(fd_props.memory_type_bits)
-    }
-
-    fn init_with_requirements(
-        &mut self,
-        reqs: vk::MemoryRequirements,
-        dedicated_info: vk::MemoryDedicatedAllocateInfo,
-        mem_info: MemoryInfo,
-        size_align: vk::DeviceSize,
-        import: Option<(OwnedFd, Layout)>,
-    ) -> Result<()> {
-        let size = reqs.size.next_multiple_of(size_align);
-
-        let mut mt_mask = reqs.memory_type_bits;
-        if let Some((ref dmabuf, layout)) = import {
-            mt_mask &= self.get_dma_buf_mt_mask(dmabuf)?;
-            if mt_mask == 0 || size > layout.size {
-                return Err(Error::InvalidParam);
-            }
-        }
-        let mt_index = self.device.find_mt(mt_mask, &mem_info)?;
-
-        let dmabuf = import.map(|(dmabuf, _)| dmabuf);
-
-        let handle =
-            self.allocate_memory(size, mt_index, dedicated_info, mem_info.priority, dmabuf)?;
-        self.handle = handle;
-        self.size = size;
-
-        Ok(())
+        Ok(mem)
     }
 
     fn allocate_memory(
-        &mut self,
+        dev: &Device,
         size: vk::DeviceSize,
         mt_index: u32,
         mut dedicated_info: vk::MemoryDedicatedAllocateInfo,
@@ -1573,7 +1524,7 @@ impl Memory {
         dmabuf: Option<OwnedFd>,
     ) -> Result<vk::DeviceMemory> {
         let mut export_info = vk::ExportMemoryAllocateInfo::default()
-            .handle_types(self.device.properties().external_memory_type);
+            .handle_types(dev.properties().external_memory_type);
         let mut mem_info = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
             .memory_type_index(mt_index)
@@ -1581,7 +1532,7 @@ impl Memory {
             .push_next(&mut dedicated_info);
 
         let mut prio_info = vk::MemoryPriorityAllocateInfoEXT::default();
-        if self.device.properties().memory_priority && priority != 0.5 {
+        if dev.properties().memory_priority && priority != 0.5 {
             prio_info = prio_info.priority(priority);
             mem_info = mem_info.push_next(&mut prio_info);
         }
@@ -1592,13 +1543,13 @@ impl Memory {
         if let Some(dmabuf) = dmabuf {
             raw_fd = dmabuf.into_raw_fd();
             import_info = import_info
-                .handle_type(self.device.properties().external_memory_type)
+                .handle_type(dev.properties().external_memory_type)
                 .fd(raw_fd);
             mem_info = mem_info.push_next(&mut import_info);
         }
 
         // SAFETY: good
-        let handle = unsafe { self.device.handle.allocate_memory(&mem_info, None) };
+        let handle = unsafe { dev.handle.allocate_memory(&mem_info, None) };
 
         let handle = handle.map_err(|err| {
             if raw_fd >= 0 {
@@ -1612,10 +1563,6 @@ impl Memory {
         })?;
 
         Ok(handle)
-    }
-
-    pub fn size(&self) -> vk::DeviceSize {
-        self.size
     }
 
     pub fn map(&self) -> Result<Mapping> {
@@ -1696,59 +1643,63 @@ impl Drop for Memory {
 pub struct Buffer {
     device: Arc<Device>,
     handle: vk::Buffer,
-    memory: Memory,
+
+    size: vk::DeviceSize,
+    mt_mask: u32,
+
+    memory: Option<Memory>,
 }
 
 impl Buffer {
-    pub fn new(
+    fn new(device: Arc<Device>, buf_info: BufferInfo, size: vk::DeviceSize) -> Result<Self> {
+        let handle = Self::create_buffer(&device, buf_info, size)?;
+        let mut buf = Self {
+            device,
+            handle,
+            size: 0,
+            mt_mask: 0,
+            memory: None,
+        };
+        buf.init_memory_requirements();
+
+        Ok(buf)
+    }
+
+    pub fn with_size(
         dev: Arc<Device>,
         buf_info: BufferInfo,
-        mem_info: MemoryInfo,
         size: vk::DeviceSize,
         con: Option<Constraint>,
     ) -> Result<Self> {
-        let handle = Self::create_buffer(&dev, &buf_info, size)?;
+        let mut buf = Self::new(dev, buf_info, size)?;
 
-        let (_, _, size_align) = Constraint::unpack(con);
-        Self::with_handle(dev, handle, mem_info, size_align, None)
+        if let Some(con) = con {
+            buf.size = buf.size.next_multiple_of(con.size_align);
+        }
+
+        Ok(buf)
     }
 
     pub fn with_dma_buf(
         dev: Arc<Device>,
         buf_info: BufferInfo,
-        mem_info: MemoryInfo,
         size: vk::DeviceSize,
-        dmabuf: OwnedFd,
+        dmabuf: &OwnedFd,
         layout: Layout,
     ) -> Result<Self> {
-        let handle = Self::create_buffer(&dev, &buf_info, size)?;
-        Self::with_handle(dev, handle, mem_info, 1, Some((dmabuf, layout)))
-    }
+        let mut buf = Self::new(dev, buf_info, size)?;
 
-    fn with_handle(
-        device: Arc<Device>,
-        handle: vk::Buffer,
-        mem_info: MemoryInfo,
-        size_align: vk::DeviceSize,
-        import: Option<(OwnedFd, Layout)>,
-    ) -> Result<Self> {
-        let memory = Memory::new(device.clone());
-        let mut buf = Self {
-            device,
-            handle,
-            memory,
-        };
-
-        buf.memory
-            .init_with_buffer(buf.handle, mem_info, size_align, import)?;
-        buf.bind_memory()?;
+        buf.mt_mask &= buf.device.get_dma_buf_mt_mask(dmabuf).unwrap_or(0);
+        if buf.size > layout.size || buf.mt_mask == 0 {
+            return Err(Error::InvalidParam);
+        }
 
         Ok(buf)
     }
 
     fn create_buffer(
         dev: &Device,
-        buf_info: &BufferInfo,
+        buf_info: BufferInfo,
         size: vk::DeviceSize,
     ) -> Result<vk::Buffer> {
         let mut external_info = vk::ExternalMemoryBufferCreateInfo::default()
@@ -1765,10 +1716,34 @@ impl Buffer {
         Ok(handle)
     }
 
-    fn bind_memory(&self) -> Result<()> {
+    fn init_memory_requirements(&mut self) {
+        let reqs_info = vk::BufferMemoryRequirementsInfo2::default().buffer(self.handle);
+        let mut reqs = vk::MemoryRequirements2::default();
+
+        // SAFETY: good
+        unsafe {
+            self.device
+                .handle
+                .get_buffer_memory_requirements2(&reqs_info, &mut reqs);
+        }
+
+        let reqs = reqs.memory_requirements;
+        self.size = reqs.size;
+        self.mt_mask = reqs.memory_type_bits;
+    }
+
+    pub fn layout(&self) -> Result<Layout> {
+        let layout = Layout::new().size(self.size);
+
+        Ok(layout)
+    }
+
+    pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
+        let mem = Memory::with_buffer(&self, mem_info, dmabuf)?;
+
         let bind_info = vk::BindBufferMemoryInfo::default()
             .buffer(self.handle)
-            .memory(self.memory.handle);
+            .memory(mem.handle);
 
         // SAFETY: ok
         unsafe {
@@ -1776,17 +1751,15 @@ impl Buffer {
                 .handle
                 .bind_buffer_memory2(slice::from_ref(&bind_info))
         }
-        .map_err(Error::from)
-    }
+        .map_err(Error::from)?;
 
-    pub fn layout(&self) -> Result<Layout> {
-        let layout = Layout::new().size(self.memory.size());
+        self.memory = Some(mem);
 
-        Ok(layout)
+        Ok(())
     }
 
     pub fn memory(&self) -> &Memory {
-        &self.memory
+        self.memory.as_ref().unwrap()
     }
 
     pub fn copy_buffer(&self, src: &Buffer, copy: CopyBuffer) -> Result<()> {
@@ -1820,18 +1793,43 @@ impl Drop for Buffer {
 pub struct Image {
     device: Arc<Device>,
     handle: vk::Image,
-    memory: Memory,
 
     tiling: vk::ImageTiling,
     format: vk::Format,
     format_plane_count: u32,
+
+    size: vk::DeviceSize,
+    mt_mask: u32,
+
+    memory: Option<Memory>,
 }
 
 impl Image {
-    pub fn new(
+    fn new(
+        device: Arc<Device>,
+        handle: vk::Image,
+        tiling: vk::ImageTiling,
+        format: vk::Format,
+    ) -> Self {
+        let format_plane_count = formats::plane_count(formats::from_vk(format)).unwrap();
+        let mut img = Self {
+            device,
+            handle,
+            tiling,
+            format,
+            format_plane_count,
+            size: 0,
+            mt_mask: 0,
+            memory: None,
+        };
+        img.init_memory_requirements();
+
+        img
+    }
+
+    pub fn with_modifiers(
         dev: Arc<Device>,
         img_info: ImageInfo,
-        mem_info: MemoryInfo,
         width: u32,
         height: u32,
         modifiers: &[Modifier],
@@ -1840,41 +1838,25 @@ impl Image {
         let tiling = dev.get_image_tiling(modifiers[0]);
         let handle =
             Self::create_implicit_image(&dev, tiling, &img_info, width, height, modifiers)?;
+        let mut img = Self::new(dev, handle, tiling, img_info.format);
 
-        // ignore constraints unless we can do explicit layout
-        if con.is_some() && tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            // be careful not to leak handle
-            let layout = dev.get_image_layout(handle, tiling, img_info.format);
-            if layout.is_err() {
-                // SAFETY: handle is owned
-                unsafe {
-                    dev.handle.destroy_image(handle, None);
-                }
-                return Err(Error::NoSupport);
+        if let Some(con) = con {
+            img.size = img.size.next_multiple_of(con.size_align);
+
+            if tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+                // TODO fall back to explicit layout if constraint is not satisfied
             }
-
-            // TODO fall back to explicit layout if constraint is not satisfied
         }
 
-        let (_, _, size_align) = Constraint::unpack(con);
-        Self::with_handle(
-            dev,
-            handle,
-            tiling,
-            img_info.format,
-            mem_info,
-            size_align,
-            None,
-        )
+        Ok(img)
     }
 
     pub fn with_dma_buf(
         dev: Arc<Device>,
         img_info: ImageInfo,
-        mem_info: MemoryInfo,
         width: u32,
         height: u32,
-        dmabuf: OwnedFd,
+        dmabuf: &OwnedFd,
         layout: Layout,
     ) -> Result<Self> {
         let tiling = dev.get_image_tiling(layout.modifier);
@@ -1891,41 +1873,12 @@ impl Image {
                 slice::from_ref(&layout.modifier),
             )?
         };
+        let mut img = Self::new(dev, handle, tiling, img_info.format);
 
-        Self::with_handle(
-            dev,
-            handle,
-            tiling,
-            img_info.format,
-            mem_info,
-            1,
-            Some((dmabuf, layout)),
-        )
-    }
-
-    fn with_handle(
-        device: Arc<Device>,
-        handle: vk::Image,
-        tiling: vk::ImageTiling,
-        format: vk::Format,
-        mem_info: MemoryInfo,
-        size_align: vk::DeviceSize,
-        import: Option<(OwnedFd, Layout)>,
-    ) -> Result<Self> {
-        let memory = Memory::new(device.clone());
-        let format_plane_count = formats::plane_count(formats::from_vk(format))?;
-        let mut img = Self {
-            device,
-            handle,
-            memory,
-            tiling,
-            format,
-            format_plane_count,
-        };
-
-        img.memory
-            .init_with_image(img.handle, mem_info, size_align, import)?;
-        img.bind_memory()?;
+        img.mt_mask &= img.device.get_dma_buf_mt_mask(dmabuf).unwrap_or(0);
+        if img.size > layout.size || img.mt_mask == 0 {
+            return Err(Error::InvalidParam);
+        }
 
         Ok(img)
     }
@@ -2024,10 +1977,35 @@ impl Image {
         Ok(handle)
     }
 
-    fn bind_memory(&self) -> Result<()> {
+    fn init_memory_requirements(&mut self) {
+        let reqs_info = vk::ImageMemoryRequirementsInfo2::default().image(self.handle);
+        let mut reqs = vk::MemoryRequirements2::default();
+
+        // SAFETY: good
+        unsafe {
+            self.device
+                .handle
+                .get_image_memory_requirements2(&reqs_info, &mut reqs);
+        }
+
+        let reqs = reqs.memory_requirements;
+        self.size = reqs.size;
+        self.mt_mask = reqs.memory_type_bits;
+    }
+
+    pub fn layout(&self) -> Result<Layout> {
+        let layout = self
+            .device
+            .get_image_layout(self.handle, self.tiling, self.format)?;
+        Ok(layout.size(self.size))
+    }
+
+    pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
+        let mem = Memory::with_image(&self, mem_info, dmabuf)?;
+
         let bind_info = vk::BindImageMemoryInfo::default()
             .image(self.handle)
-            .memory(self.memory.handle);
+            .memory(mem.handle);
 
         // SAFETY: ok
         unsafe {
@@ -2035,18 +2013,15 @@ impl Image {
                 .handle
                 .bind_image_memory2(slice::from_ref(&bind_info))
         }
-        .map_err(Error::from)
-    }
+        .map_err(Error::from)?;
 
-    pub fn layout(&self) -> Result<Layout> {
-        let layout = self
-            .device
-            .get_image_layout(self.handle, self.tiling, self.format)?;
-        Ok(layout.size(self.memory.size()))
+        self.memory = Some(mem);
+
+        Ok(())
     }
 
     pub fn memory(&self) -> &Memory {
-        &self.memory
+        self.memory.as_ref().unwrap()
     }
 
     fn get_copy_region(&self, copy: CopyBufferImage) -> vk::BufferImageCopy {

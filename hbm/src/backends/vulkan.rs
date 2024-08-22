@@ -224,8 +224,9 @@ impl super::Backend for Backend {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
             let mem_info = get_memory_info(class.description);
-            let buf =
-                sash::Buffer::new(self.device.clone(), buf_info, mem_info, extent.size(), con)?;
+            let mut buf =
+                sash::Buffer::with_size(self.device.clone(), buf_info, extent.size(), con)?;
+            buf.bind_memory(mem_info, None)?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
@@ -249,15 +250,15 @@ impl super::Backend for Backend {
                 }
             }
 
-            let img = sash::Image::new(
+            let mut img = sash::Image::with_modifiers(
                 self.device.clone(),
                 img_info,
-                mem_info,
                 extent.width(),
                 extent.height(),
                 modifiers,
                 con,
             )?;
+            img.bind_memory(mem_info, None)?;
 
             Handle::new(HandlePayload::Image(img))
         };
@@ -275,28 +276,28 @@ impl super::Backend for Backend {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
             let mem_info = get_memory_info(class.description);
-            let buf = sash::Buffer::with_dma_buf(
+            let mut buf = sash::Buffer::with_dma_buf(
                 self.device.clone(),
                 buf_info,
-                mem_info,
                 extent.size(),
-                dmabuf,
+                &dmabuf,
                 layout,
             )?;
+            buf.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
             let img_info = get_image_info(class.description, class.usage)?;
             let mem_info = get_memory_info(class.description);
-            let img = sash::Image::with_dma_buf(
+            let mut img = sash::Image::with_dma_buf(
                 self.device.clone(),
                 img_info,
-                mem_info,
                 extent.width(),
                 extent.height(),
-                dmabuf,
+                &dmabuf,
                 layout,
             )?;
+            img.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Image(img))
         };

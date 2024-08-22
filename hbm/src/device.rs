@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{Backend, Class, Constraint, Description, Extent, Usage};
-use super::formats;
 use super::types::{Error, Format, Modifier, Result};
 use std::collections::HashSet;
 use std::sync::Arc;
