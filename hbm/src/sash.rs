@@ -1469,7 +1469,6 @@ impl CommandPool {
 pub struct Memory {
     device: Arc<Device>,
     handle: vk::DeviceMemory,
-    size: vk::DeviceSize,
 }
 
 impl Memory {
@@ -1488,7 +1487,6 @@ impl Memory {
         let mem = Self {
             device: buf.device.clone(),
             handle,
-            size: buf.size,
         };
 
         Ok(mem)
@@ -1509,7 +1507,6 @@ impl Memory {
         let mem = Self {
             device: img.device.clone(),
             handle,
-            size: img.size,
         };
 
         Ok(mem)
@@ -1565,17 +1562,16 @@ impl Memory {
         Ok(handle)
     }
 
-    pub fn map(&self) -> Result<Mapping> {
-        let offset = 0;
+    pub fn map(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<Mapping> {
         let flags = vk::MemoryMapFlags::empty();
 
-        let len = num::NonZeroUsize::try_from(usize::try_from(self.size)?)?;
+        let len = num::NonZeroUsize::try_from(usize::try_from(size)?)?;
 
         // SAFETY: good
         let ptr = unsafe {
             self.device
                 .handle
-                .map_memory(self.handle, offset, self.size, flags)
+                .map_memory(self.handle, offset, size, flags)
         }?;
         let ptr = ptr::NonNull::new(ptr).unwrap();
 
@@ -1589,10 +1585,11 @@ impl Memory {
         unsafe { self.device.handle.unmap_memory(self.handle) };
     }
 
-    pub fn flush(&self) -> Result<()> {
+    pub fn flush(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<()> {
         let range = vk::MappedMemoryRange::default()
             .memory(self.handle)
-            .size(self.size);
+            .offset(offset)
+            .size(size);
 
         // SAFETY: ok
         unsafe {
@@ -1603,10 +1600,11 @@ impl Memory {
         .map_err(Error::from)
     }
 
-    pub fn invalidate(&self) -> Result<()> {
+    pub fn invalidate(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<()> {
         let range = vk::MappedMemoryRange::default()
             .memory(self.handle)
-            .size(self.size);
+            .offset(offset)
+            .size(size);
 
         // SAFETY: ok
         unsafe {

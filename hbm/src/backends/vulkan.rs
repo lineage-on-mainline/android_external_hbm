@@ -328,7 +328,7 @@ impl super::Backend for Backend {
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {
         let mem = get_memory(handle)?;
-        mem.map()
+        mem.map(0, vk::WHOLE_SIZE)
     }
 
     fn unmap(&self, handle: &Handle, _mapping: Mapping) {
@@ -339,12 +339,12 @@ impl super::Backend for Backend {
 
     fn flush(&self, handle: &Handle) -> Result<()> {
         let mem = get_memory(handle)?;
-        mem.flush()
+        mem.flush(0, vk::WHOLE_SIZE)
     }
 
     fn invalidate(&self, handle: &Handle) -> Result<()> {
         let mem = get_memory(handle)?;
-        mem.invalidate()
+        mem.invalidate(0, vk::WHOLE_SIZE)
     }
 
     fn copy_buffer(
