@@ -24,7 +24,6 @@ than via cargo.
   - thread safety
   - error reporting
   - robustness
-  - device lost
   - `no_std`
   - cleanups
   - docs

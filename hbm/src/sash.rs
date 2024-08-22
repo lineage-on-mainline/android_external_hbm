@@ -685,6 +685,9 @@ impl Device {
         Ok(Arc::new(dev))
     }
 
+    // We might want to add a recreate fn to handle device lost.  Existing resources will keep the
+    // old vk::Device alive, but gpu copies will no longer work for them.  We will also need to
+    // check that resources have the same vk::Device handle as we do.
     fn new(physical_device: PhysicalDevice, dev_info: DeviceCreateInfo) -> Result<Self> {
         let handle = Self::create_device(&physical_device, dev_info)?;
         let dispatch = Self::create_dispatch(&handle, &physical_device);
@@ -1105,6 +1108,10 @@ impl Device {
     }
 
     fn get_pipeline_barrier_scope(&self, ty: PipelineBarrierType) -> PipelineBarrierScope {
+        // We assume all resources are owned by the foreign queue and, in the case of images, have
+        // been initialized to the GENERAL layout.  Strictly speaking, the layout part is not
+        // guaranteed unless we always explicitly transition the layout and release the ownership
+        // during image creation.
         let src_queue_family;
         let src_stage_mask;
         let src_access_mask;
