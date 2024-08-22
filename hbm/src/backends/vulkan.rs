@@ -114,7 +114,10 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
     Ok(img_info)
 }
 
-fn get_memory_info(desc: Description) -> sash::MemoryInfo {
+fn get_memory_info(
+    desc: Description,
+    memory_types: Vec<(u32, vk::MemoryPropertyFlags)>,
+) -> Result<sash::MemoryInfo> {
     let mut required_flags = vk::MemoryPropertyFlags::empty();
     let mut disallowed_flags = vk::MemoryPropertyFlags::empty();
     let mut optional_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL;
@@ -137,16 +140,24 @@ fn get_memory_info(desc: Description) -> sash::MemoryInfo {
         disallowed_flags |= vk::MemoryPropertyFlags::PROTECTED;
     }
 
+    let mut mt_iter = memory_types.into_iter().filter(|(_, mt_flags)| {
+        mt_flags.contains(required_flags) && !mt_flags.intersects(disallowed_flags)
+    });
+
+    let first_mt = mt_iter.next();
+    if first_mt.is_none() {
+        return Err(Error::NoSupport);
+    }
+    let best_mt = mt_iter.find(|(_, mt_flags)| mt_flags.contains(optional_flags));
+    let mt_index = best_mt.or(first_mt).unwrap().0;
+
     if desc.flags.contains(Flags::PRIORITY_HIGH) {
         priority += 0.1;
     }
 
-    sash::MemoryInfo {
-        required_flags,
-        disallowed_flags,
-        optional_flags,
-        priority,
-    }
+    let mem_info = sash::MemoryInfo { mt_index, priority };
+
+    Ok(mem_info)
 }
 
 fn get_memory(handle: &Handle) -> Result<&sash::Memory> {
@@ -223,15 +234,15 @@ impl super::Backend for Backend {
     fn allocate(&self, class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let mem_info = get_memory_info(class.description);
             let mut buf =
                 sash::Buffer::with_size(self.device.clone(), buf_info, extent.size(), con)?;
+
+            let mem_info = get_memory_info(class.description, buf.memory_types())?;
             buf.bind_memory(mem_info, None)?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
             let img_info = get_image_info(class.description, class.usage)?;
-            let mem_info = get_memory_info(class.description);
 
             let mut modifiers = &class.modifiers;
             let filtered_modifiers: Vec<Modifier>;
@@ -258,6 +269,8 @@ impl super::Backend for Backend {
                 modifiers,
                 con,
             )?;
+
+            let mem_info = get_memory_info(class.description, img.memory_types())?;
             img.bind_memory(mem_info, None)?;
 
             Handle::new(HandlePayload::Image(img))
@@ -275,7 +288,6 @@ impl super::Backend for Backend {
     ) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let mem_info = get_memory_info(class.description);
             let mut buf = sash::Buffer::with_dma_buf(
                 self.device.clone(),
                 buf_info,
@@ -283,12 +295,13 @@ impl super::Backend for Backend {
                 &dmabuf,
                 layout,
             )?;
+
+            let mem_info = get_memory_info(class.description, buf.memory_types())?;
             buf.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
             let img_info = get_image_info(class.description, class.usage)?;
-            let mem_info = get_memory_info(class.description);
             let mut img = sash::Image::with_dma_buf(
                 self.device.clone(),
                 img_info,
@@ -297,6 +310,8 @@ impl super::Backend for Backend {
                 &dmabuf,
                 layout,
             )?;
+
+            let mem_info = get_memory_info(class.description, img.memory_types())?;
             img.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Image(img))

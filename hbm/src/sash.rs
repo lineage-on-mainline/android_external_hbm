@@ -599,9 +599,7 @@ pub struct ImageProperties {
 }
 
 pub struct MemoryInfo {
-    pub required_flags: vk::MemoryPropertyFlags,
-    pub disallowed_flags: vk::MemoryPropertyFlags,
-    pub optional_flags: vk::MemoryPropertyFlags,
+    pub mt_index: u32,
     pub priority: f32,
 }
 
@@ -1021,6 +1019,21 @@ impl Device {
         Ok(fd_props.memory_type_bits)
     }
 
+    fn memory_types(&self, mt_mask: u32) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+        self.properties()
+            .memory_types
+            .iter()
+            .enumerate()
+            .filter_map(|(mt_idx, mt_flags)| {
+                if mt_mask & (1 << mt_idx) != 0 {
+                    Some((mt_idx as u32, *mt_flags))
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     fn get_image_subresource_aspect(
         &self,
         tiling: vk::ImageTiling,
@@ -1052,34 +1065,6 @@ impl Device {
         };
 
         Ok(aspect)
-    }
-
-    fn find_mt(&self, mt_mask: u32, mem_info: &MemoryInfo) -> Result<u32> {
-        let candidates: Vec<(usize, &vk::MemoryPropertyFlags)> = self
-            .properties()
-            .memory_types
-            .iter()
-            .enumerate()
-            .filter(|(mt_idx, mt_flags)| {
-                (mt_mask & (1 << mt_idx)) > 0
-                    && mt_flags.contains(mem_info.required_flags)
-                    && !mt_flags.intersects(mem_info.disallowed_flags)
-            })
-            .collect();
-        if candidates.is_empty() {
-            return Err(Error::NoSupport);
-        }
-
-        let mt_idx = if let Some(&(mt_idx, _)) = candidates
-            .iter()
-            .find(|(_, mt_flags)| mt_flags.contains(mem_info.optional_flags))
-        {
-            mt_idx
-        } else {
-            candidates[0].0
-        };
-
-        Ok(mt_idx as u32)
     }
 
     fn get_image_layout(
@@ -1473,13 +1458,12 @@ pub struct Memory {
 
 impl Memory {
     fn with_buffer(buf: &Buffer, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<Self> {
-        let mt_index = buf.device.find_mt(buf.mt_mask, &mem_info)?;
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf.handle);
 
         let handle = Self::allocate_memory(
             &buf.device,
             buf.size,
-            mt_index,
+            mem_info.mt_index,
             dedicated_info,
             mem_info.priority,
             dmabuf,
@@ -1493,13 +1477,12 @@ impl Memory {
     }
 
     fn with_image(img: &Image, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<Self> {
-        let mt_index = img.device.find_mt(img.mt_mask, &mem_info)?;
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(img.handle);
 
         let handle = Self::allocate_memory(
             &img.device,
             img.size,
-            mt_index,
+            mem_info.mt_index,
             dedicated_info,
             mem_info.priority,
             dmabuf,
@@ -1734,6 +1717,10 @@ impl Buffer {
         let layout = Layout::new().size(self.size);
 
         Ok(layout)
+    }
+
+    pub fn memory_types(&self) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+        self.device.memory_types(self.mt_mask)
     }
 
     pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
@@ -1996,6 +1983,10 @@ impl Image {
             .device
             .get_image_layout(self.handle, self.tiling, self.format)?;
         Ok(layout.size(self.size))
+    }
+
+    pub fn memory_types(&self) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+        self.device.memory_types(self.mt_mask)
     }
 
     pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
