@@ -99,6 +99,10 @@ impl Device {
         Ok(class)
     }
 
+    pub(crate) fn backend(&self, idx: usize) -> &dyn Backend {
+        self.backends[idx].as_ref()
+    }
+
     pub fn modifiers<'a>(&self, class: &'a Class) -> Option<&'a Vec<Modifier>> {
         // MOD_INVALID indicates an implicit modifier internally, but it means there is no modifier
         // support to users

@@ -96,7 +96,7 @@ impl Bo {
     }
 
     fn backend(&self) -> &dyn Backend {
-        self.device.backends[self.handle.backend_index].as_ref()
+        self.device.backend(self.handle.backend_index)
     }
 
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
