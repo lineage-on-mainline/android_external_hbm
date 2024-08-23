@@ -289,7 +289,7 @@ impl super::Backend for Backend {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
             let mut buf =
-                sash::Buffer::with_dma_buf(self.device.clone(), buf_info, extent.size(), layout)?;
+                sash::Buffer::with_layout(self.device.clone(), buf_info, extent.size(), layout)?;
 
             let mem_info = get_memory_info(class.description, buf.memory_types(Some(&dmabuf)))?;
             buf.bind_memory(mem_info, Some(dmabuf))?;
@@ -297,7 +297,7 @@ impl super::Backend for Backend {
             Handle::new(HandlePayload::Buffer(buf))
         } else {
             let img_info = get_image_info(class.description, class.usage)?;
-            let mut img = sash::Image::with_dma_buf(
+            let mut img = sash::Image::with_layout(
                 self.device.clone(),
                 img_info,
                 extent.width(),

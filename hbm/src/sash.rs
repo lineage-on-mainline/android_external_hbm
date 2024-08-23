@@ -1696,7 +1696,7 @@ impl Buffer {
         Ok(buf)
     }
 
-    pub fn with_dma_buf(
+    pub fn with_layout(
         dev: Arc<Device>,
         buf_info: BufferInfo,
         size: vk::DeviceSize,
@@ -1870,7 +1870,7 @@ impl Image {
         Ok(img)
     }
 
-    pub fn with_dma_buf(
+    pub fn with_layout(
         dev: Arc<Device>,
         img_info: ImageInfo,
         width: u32,
