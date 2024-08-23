@@ -246,10 +246,10 @@ impl super::Backend for Backend {
         assert!(!desc.is_buffer());
 
         let size = (extent.width(), extent.height());
-        let format = DrmFourcc::try_from(desc.format.0).or(Err(Error::NoSupport))?;
+        let fmt = DrmFourcc::try_from(desc.format.0).or(Err(Error::NoSupport))?;
         let bpp = formats::block_size(desc.format, 0)? * 8;
 
-        let buf = self.device.create_dumb_buffer(size, format, bpp)?;
+        let buf = self.device.create_dumb_buffer(size, fmt, bpp)?;
         let pitch = buf.pitch();
         let dmabuf = self
             .device

@@ -88,17 +88,17 @@ const KNOWN_FORMATS: [Format; 24] = [
     Format(consts::DRM_FORMAT_YVU420),
 ];
 
-pub fn fourcc(format: Format) -> String {
-    let bytes = format.0.to_le_bytes();
+pub fn fourcc(fmt: Format) -> String {
+    let bytes = fmt.0.to_le_bytes();
     if let Ok(s) = str::from_utf8(&bytes) {
         format!("'{s}'")
     } else {
-        format!("0x{:x}", format.0)
+        format!("0x{:x}", fmt.0)
     }
 }
 
-pub fn name(format: Format) -> Option<&'static str> {
-    let name = match format.0 {
+pub fn name(fmt: Format) -> Option<&'static str> {
+    let name = match fmt.0 {
         consts::DRM_FORMAT_R8 => "R8",
         consts::DRM_FORMAT_BGR565 => "BGR565",
         consts::DRM_FORMAT_RGB565 => "RGB565",
@@ -137,7 +137,7 @@ struct FormatClass {
     block_extent: [(u8, u8); 3],
 }
 
-fn format_class(format: Format) -> Result<&'static FormatClass> {
+fn format_class(fmt: Format) -> Result<&'static FormatClass> {
     // this follows Vulkan format compatibility classes
     const FORMAT_CLASS_1B: FormatClass = FormatClass {
         plane_count: 1,
@@ -179,7 +179,7 @@ fn format_class(format: Format) -> Result<&'static FormatClass> {
         block_extent: [(1, 1), (2, 2), (2, 2)],
     };
 
-    let format_class = match format.0 {
+    let fmt_class = match fmt.0 {
         consts::DRM_FORMAT_R8 => &FORMAT_CLASS_1B,
         consts::DRM_FORMAT_BGR565
         | consts::DRM_FORMAT_RGB565
@@ -202,36 +202,36 @@ fn format_class(format: Format) -> Result<&'static FormatClass> {
         _ => return Err(Error::InvalidParam),
     };
 
-    Ok(format_class)
+    Ok(fmt_class)
 }
 
-pub fn block_size(format: Format, plane: u32) -> Result<u32> {
-    let format_class = format_class(format)?;
-    Ok(format_class.block_size[plane as usize] as u32)
+pub fn block_size(fmt: Format, plane: u32) -> Result<u32> {
+    let fmt_class = format_class(fmt)?;
+    Ok(fmt_class.block_size[plane as usize] as u32)
 }
 
 pub fn plane_count(fmt: Format) -> Result<u32> {
-    let format_class = format_class(fmt)?;
-    Ok(format_class.plane_count as u32)
+    let fmt_class = format_class(fmt)?;
+    Ok(fmt_class.plane_count as u32)
 }
 
 pub fn packed_layout(
-    format: Format,
+    fmt: Format,
     width: u32,
     height: u32,
     con: Option<Constraint>,
 ) -> Result<Layout> {
-    let format_class = format_class(format)?;
+    let fmt_class = format_class(fmt)?;
 
     let mut layout = Layout::new()
         .modifier(MOD_LINEAR)
-        .plane_count(format_class.plane_count as u32);
+        .plane_count(fmt_class.plane_count as u32);
 
     let (offset_align, stride_align, size_align) = Constraint::unpack(con);
     let mut offset: Size = 0;
-    for plane in 0..(format_class.plane_count as usize) {
-        let (bw, bh) = format_class.block_extent[plane];
-        let bs = format_class.block_size[plane] as Size;
+    for plane in 0..(fmt_class.plane_count as usize) {
+        let (bw, bh) = fmt_class.block_extent[plane];
+        let bs = fmt_class.block_size[plane] as Size;
 
         let width = width.div_ceil(bw as u32) as Size;
         let height = height.div_ceil(bh as u32) as Size;
@@ -261,8 +261,8 @@ pub enum Swizzle {
     Bgra,
 }
 
-pub fn to_vk(format: Format) -> Result<(vk::Format, Swizzle)> {
-    let mapped = match format.0 {
+pub fn to_vk(fmt: Format) -> Result<(vk::Format, Swizzle)> {
+    let mapped = match fmt.0 {
         consts::DRM_FORMAT_R8 => (vk::Format::R8_UNORM, Swizzle::None),
         consts::DRM_FORMAT_BGR565 => {
             if cfg!(target_endian = "little") {
@@ -352,16 +352,16 @@ impl Iterator for VkIter {
     type Item = (vk::Format, u8);
 
     fn next(&mut self) -> Option<Self::Item> {
-        for &format in self.0.by_ref() {
-            if let Ok((vk_format, swizzle)) = to_vk(format) {
+        for &fmt in self.0.by_ref() {
+            if let Ok((vk_fmt, swizzle)) = to_vk(fmt) {
                 // We want to return all unique vk formats.  It suffices to return all unswizzled
                 // formats given how to_vk works for now.
                 if swizzle != Swizzle::None {
                     continue;
                 }
 
-                let plane_count = format_class(format).unwrap().plane_count;
-                return Some((vk_format, plane_count));
+                let plane_count = format_class(fmt).unwrap().plane_count;
+                return Some((vk_fmt, plane_count));
             }
         }
 
@@ -403,8 +403,8 @@ mod tests {
 
     #[test]
     fn format_class() {
-        for format in KNOWN_FORMATS {
-            assert!(super::format_class(format).is_ok());
+        for fmt in KNOWN_FORMATS {
+            assert!(super::format_class(fmt).is_ok());
         }
     }
 
@@ -434,26 +434,26 @@ mod tests {
     #[test]
     fn to_vk() {
         #[cfg(target_endian = "little")]
-        for format in KNOWN_FORMATS {
-            let (vk_format, _) = super::to_vk(format).unwrap();
-            assert_ne!(vk_format, vk::Format::UNDEFINED);
+        for fmt in KNOWN_FORMATS {
+            let (vk_fmt, _) = super::to_vk(fmt).unwrap();
+            assert_ne!(vk_fmt, vk::Format::UNDEFINED);
         }
     }
 
     #[test]
     fn enumerate_vk() {
-        let mut vk_formats: Vec<vk::Format> = super::enumerate_vk().map(|(f, _)| f).collect();
+        let mut vk_fmts: Vec<vk::Format> = super::enumerate_vk().map(|(f, _)| f).collect();
 
-        let mut all_vk_formats = Vec::new();
-        for format in KNOWN_FORMATS {
-            if let Ok((vk_format, _)) = super::to_vk(format) {
-                all_vk_formats.push(vk_format);
+        let mut all_vk_fmts = Vec::new();
+        for fmt in KNOWN_FORMATS {
+            if let Ok((vk_fmt, _)) = super::to_vk(fmt) {
+                all_vk_fmts.push(vk_fmt);
             }
         }
 
-        vk_formats.sort();
-        all_vk_formats.sort();
-        all_vk_formats.dedup();
-        assert_eq!(vk_formats, all_vk_formats);
+        vk_fmts.sort();
+        all_vk_fmts.sort();
+        all_vk_fmts.dedup();
+        assert_eq!(vk_fmts, all_vk_fmts);
     }
 }

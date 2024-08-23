@@ -45,8 +45,8 @@ impl Description {
         self
     }
 
-    pub fn format(mut self, format: Format) -> Self {
-        self.format = format;
+    pub fn format(mut self, fmt: Format) -> Self {
+        self.format = fmt;
         self
     }
 

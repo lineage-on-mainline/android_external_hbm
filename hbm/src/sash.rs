@@ -487,8 +487,8 @@ impl PhysicalDevice {
 
     fn get_format_properties(
         &self,
-        format: vk::Format,
-        format_plane_count: u32,
+        fmt: vk::Format,
+        fmt_plane_count: u32,
     ) -> Vec<vk::DrmFormatModifierPropertiesEXT> {
         let mut mod_props_list = vk::DrmFormatModifierPropertiesListEXT::default();
         let mut props = vk::FormatProperties2::default().push_next(&mut mod_props_list);
@@ -497,7 +497,7 @@ impl PhysicalDevice {
         unsafe {
             self.instance.handle.get_physical_device_format_properties2(
                 self.handle,
-                format,
+                fmt,
                 &mut props,
             );
         }
@@ -517,7 +517,7 @@ impl PhysicalDevice {
             unsafe {
                 self.instance.handle.get_physical_device_format_properties2(
                     self.handle,
-                    format,
+                    fmt,
                     &mut props,
                 );
             }
@@ -535,16 +535,16 @@ impl PhysicalDevice {
             if !linear_feats.is_empty() {
                 let linear_props = vk::DrmFormatModifierPropertiesEXT {
                     drm_format_modifier: formats::MOD_LINEAR.0,
-                    drm_format_modifier_plane_count: format_plane_count,
+                    drm_format_modifier_plane_count: fmt_plane_count,
                     drm_format_modifier_tiling_features: linear_feats,
                 };
                 mods.push(linear_props);
             }
             // limit optimal tiling to non-planar formats
-            if !optimal_feats.is_empty() && format_plane_count == 1 {
+            if !optimal_feats.is_empty() && fmt_plane_count == 1 {
                 let optimal_props = vk::DrmFormatModifierPropertiesEXT {
                     drm_format_modifier: formats::MOD_INVALID.0,
-                    drm_format_modifier_plane_count: format_plane_count,
+                    drm_format_modifier_plane_count: fmt_plane_count,
                     drm_format_modifier_tiling_features: optimal_feats,
                 };
                 mods.push(optimal_props);
@@ -555,8 +555,8 @@ impl PhysicalDevice {
     }
 
     fn probe_formats(&mut self) -> Result<()> {
-        for (fmt, format_plane_count) in formats::enumerate_vk() {
-            let mods = self.get_format_properties(fmt, format_plane_count as u32);
+        for (fmt, fmt_plane_count) in formats::enumerate_vk() {
+            let mods = self.get_format_properties(fmt, fmt_plane_count as u32);
             self.properties.formats.insert(fmt, mods);
         }
 
@@ -860,7 +860,7 @@ impl Device {
         usage: vk::ImageUsageFlags,
         compression: vk::ImageCompressionFlagsEXT,
         scanout_hack: bool,
-        format: vk::Format,
+        fmt: vk::Format,
         modifier: Modifier,
     ) -> Result<()> {
         let tiling = self.get_image_tiling(modifier);
@@ -869,7 +869,7 @@ impl Device {
             .handle_type(self.properties().external_memory_type);
         let mut comp_info = vk::ImageCompressionControlEXT::default().flags(compression);
         let mut img_info = vk::PhysicalDeviceImageFormatInfo2::default()
-            .format(format)
+            .format(fmt)
             .ty(vk::ImageType::TYPE_2D)
             .tiling(tiling)
             .usage(usage)
@@ -1071,7 +1071,7 @@ impl Device {
         &self,
         handle: vk::Image,
         tiling: vk::ImageTiling,
-        format: vk::Format,
+        fmt: vk::Format,
     ) -> Result<Layout> {
         let modifier = match tiling {
             vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => {
@@ -1091,7 +1091,7 @@ impl Device {
             _ => return Err(Error::NoSupport),
         };
 
-        let mem_plane_count = self.memory_plane_count(format, modifier).unwrap();
+        let mem_plane_count = self.memory_plane_count(fmt, modifier).unwrap();
 
         // note that size is not set here
         let mut layout = Layout::new()

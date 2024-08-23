@@ -78,7 +78,7 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
 
     let mut img_flags = vk::ImageCreateFlags::empty();
     let mut img_usage = vk::ImageUsageFlags::empty();
-    let (img_format, _) = formats::to_vk(desc.format)?;
+    let (img_fmt, _) = formats::to_vk(desc.format)?;
 
     if desc.flags.contains(Flags::PROTECTED) {
         img_flags |= vk::ImageCreateFlags::PROTECTED;
@@ -105,7 +105,7 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
     let img_info = sash::ImageInfo {
         flags: img_flags,
         usage: img_usage,
-        format: img_format,
+        format: img_fmt,
         modifier: desc.modifier,
         no_compression: desc.flags.contains(Flags::NO_COMPRESSION),
         scanout_hack: desc.flags.contains(Flags::SCANOUT),
