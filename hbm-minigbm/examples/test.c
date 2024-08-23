@@ -95,7 +95,7 @@ static void
 test_image(struct hbm_device *dev)
 {
     const struct hbm_description img_desc = {
-        .flags = HBM_FLAG_MAP | HBM_FLAG_COPY,
+        .flags = HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
         .format = DRM_FORMAT_R8,
         .modifier = DRM_FORMAT_MOD_LINEAR,
     };
@@ -129,9 +129,11 @@ test_image(struct hbm_device *dev)
             .height = 31,
         },
     };
-    struct hbm_bo *img_bo = hbm_bo_create(dev, &img_desc, &img_extent, NULL);
+    struct hbm_bo *img_bo = hbm_bo_create_with_constraint(dev, &img_desc, &img_extent, NULL);
     if (!img_bo)
         die("failed to create image bo");
+    if (!hbm_bo_bind_memory(img_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
+        die("failed to bind image bo");
 
     int img_dmabuf = hbm_bo_export_dma_buf(img_bo, "test image");
     if (img_dmabuf < 0)
@@ -146,8 +148,10 @@ test_image(struct hbm_device *dev)
 
     hbm_bo_destroy(img_bo);
 
-    img_bo = hbm_bo_import_dma_buf(dev, &img_desc, &img_extent, img_dmabuf, &img_layout);
+    img_bo = hbm_bo_create_with_layout(dev, &img_desc, &img_extent, &img_layout);
     if (!img_bo)
+        die("failed to create image bo with layout");
+    if (!hbm_bo_bind_memory(img_bo, HBM_MEMORY_FLAG_MAPPABLE, img_dmabuf))
         die("failed to import image dma-buf");
 
     test_image_map(img_bo, img_extent.image.width, img_extent.image.height, img_layout.strides[0],
@@ -155,7 +159,7 @@ test_image(struct hbm_device *dev)
 
     {
         const struct hbm_description tmp_desc = {
-            .flags = HBM_FLAG_MAP | HBM_FLAG_COPY,
+            .flags = HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
             .format = DRM_FORMAT_INVALID,
             .modifier = DRM_FORMAT_MOD_INVALID,
         };
@@ -164,7 +168,12 @@ test_image(struct hbm_device *dev)
                 .size = img_extent.image.width * img_extent.image.height,
             },
         };
-        struct hbm_bo *tmp_bo = hbm_bo_create(dev, &tmp_desc, &tmp_extent, NULL);
+        struct hbm_bo *tmp_bo = hbm_bo_create_with_constraint(dev, &tmp_desc, &tmp_extent, NULL);
+	if (!tmp_bo)
+		die("failed to create temp bo");
+	if (!hbm_bo_bind_memory(tmp_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
+		die("failed to bind temp bo");
+
         test_image_copy(img_bo, tmp_bo, img_extent.image.width, img_extent.image.height);
         hbm_bo_destroy(tmp_bo);
     }
@@ -225,7 +234,7 @@ static void
 test_buffer(struct hbm_device *dev)
 {
     const struct hbm_description buf_desc = {
-        .flags = HBM_FLAG_MAP | HBM_FLAG_COPY,
+        .flags = HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
         .format = DRM_FORMAT_INVALID,
         .modifier = DRM_FORMAT_MOD_INVALID,
     };
@@ -238,9 +247,11 @@ test_buffer(struct hbm_device *dev)
             .size = 13,
         },
     };
-    struct hbm_bo *buf_bo = hbm_bo_create(dev, &buf_desc, &buf_extent, NULL);
+    struct hbm_bo *buf_bo = hbm_bo_create_with_constraint(dev, &buf_desc, &buf_extent, NULL);
     if (!buf_bo)
         die("failed to create buffer bo");
+    if (!hbm_bo_bind_memory(buf_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
+        die("failed to bind buffer bo");
 
     int buf_dmabuf = hbm_bo_export_dma_buf(buf_bo, "test buffer");
     if (buf_dmabuf < 0)
@@ -254,14 +265,21 @@ test_buffer(struct hbm_device *dev)
 
     hbm_bo_destroy(buf_bo);
 
-    buf_bo = hbm_bo_import_dma_buf(dev, &buf_desc, &buf_extent, buf_dmabuf, &buf_layout);
+    buf_bo = hbm_bo_create_with_layout(dev, &buf_desc, &buf_extent, &buf_layout);
     if (!buf_bo)
+        die("failed to create buffer bo with layout");
+    if (!hbm_bo_bind_memory(buf_bo, HBM_MEMORY_FLAG_MAPPABLE, buf_dmabuf))
         die("failed to import buffer dma-buf");
 
     test_buffer_map(buf_bo, buf_extent.buffer.size, false);
 
     {
-        struct hbm_bo *tmp_bo = hbm_bo_create(dev, &buf_desc, &buf_extent, NULL);
+        struct hbm_bo *tmp_bo = hbm_bo_create_with_constraint(dev, &buf_desc, &buf_extent, NULL);
+	if (!tmp_bo)
+		die("failed to create temp bo");
+	if (!hbm_bo_bind_memory(tmp_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
+		die("failed to bind temp bo");
+
         test_buffer_copy(buf_bo, tmp_bo, buf_extent.buffer.size);
         hbm_bo_destroy(tmp_bo);
     }

@@ -2,36 +2,9 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::{hash_map::Entry, HashMap};
-use std::os::fd::{FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::os::fd::{BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
 use std::{ffi, ptr, slice};
-
-/// The BO can be mapped.
-pub const HBM_FLAG_MAP: u32 = 1 << 0;
-/// The BO can be copied to or copied from.
-pub const HBM_FLAG_COPY: u32 = 1 << 1;
-/// The BO must be allocated from a protected heap.
-pub const HBM_FLAG_PROTECTED: u32 = 1 << 2;
-/// The BO must not be compressed.
-pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 3;
-/// The BO can be scanned out.
-pub const HBM_FLAG_SCANOUT: u32 = 1 << 4;
-
-/// Prefers a coherent mapping.
-pub const HBM_FLAG_COHERENT: u32 = 1 << 5;
-/// Prefers a non-cached mapping.
-pub const HBM_FLAG_NO_CACHE: u32 = 1 << 6;
-
-/// The BO can be used for GPU copies.
-pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
-/// The BO can be used as a GPU uniform buffer.
-pub const HBM_USAGE_GPU_UNIFORM: u64 = 1u64 << 1;
-/// The BO can be used as a GPU storage buffer or image.
-pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 2;
-/// The BO can be used as a GPU sampled image.
-pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 3;
-/// The BO can be used as a GPU color image.
-pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
 
 /// Log level of a message or the message filter.
 #[repr(C)]
@@ -53,6 +26,141 @@ pub enum hbm_log_level {
 pub type hbm_log_callback = Option<
     unsafe extern "C" fn(lv: hbm_log_level, msg: *const ffi::c_char, cb_data: *mut ffi::c_void),
 >;
+
+/// The BO can be mapped.
+pub const HBM_RESOURCE_FLAG_MAP: u32 = 1 << 0;
+/// The BO can be copied to or copied from.
+pub const HBM_RESOURCE_FLAG_COPY: u32 = 1 << 1;
+/// The BO must be allocated from a protected heap.
+pub const HBM_RESOURCE_FLAG_PROTECTED: u32 = 1 << 2;
+/// The BO must not be compressed.
+pub const HBM_RESOURCE_FLAG_NO_COMPRESSION: u32 = 1 << 3;
+/// The BO can be scanned out.
+pub const HBM_RESOURCE_FLAG_SCANOUT: u32 = 1 << 4;
+
+fn resource_flags_into(flags: u32) -> hbm::ResourceFlags {
+    let mut res_flags = hbm::ResourceFlags::empty();
+    if (flags & HBM_RESOURCE_FLAG_MAP) > 0 {
+        res_flags |= hbm::ResourceFlags::MAP;
+    }
+    if (flags & HBM_RESOURCE_FLAG_COPY) > 0 {
+        res_flags |= hbm::ResourceFlags::COPY;
+    }
+    if (flags & HBM_RESOURCE_FLAG_PROTECTED) > 0 {
+        res_flags |= hbm::ResourceFlags::PROTECTED;
+    }
+    if (flags & HBM_RESOURCE_FLAG_NO_COMPRESSION) > 0 {
+        res_flags |= hbm::ResourceFlags::NO_COMPRESSION;
+    }
+    if (flags & HBM_RESOURCE_FLAG_SCANOUT) > 0 {
+        res_flags |= hbm::ResourceFlags::SCANOUT;
+    }
+
+    res_flags
+}
+
+/// The BO can be used for GPU copies.
+pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
+/// The BO can be used as a GPU uniform buffer.
+pub const HBM_USAGE_GPU_UNIFORM: u64 = 1u64 << 1;
+/// The BO can be used as a GPU storage buffer or image.
+pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 2;
+/// The BO can be used as a GPU sampled image.
+pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 3;
+/// The BO can be used as a GPU color image.
+pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
+
+fn usage_into(usage: u64) -> hbm::vulkan::Usage {
+    let mut vk_usage = hbm::vulkan::Usage::empty();
+    if (usage & HBM_USAGE_GPU_TRANSFER) > 0 {
+        vk_usage |= hbm::vulkan::Usage::TRANSFER;
+    }
+    if (usage & HBM_USAGE_GPU_UNIFORM) > 0 {
+        vk_usage |= hbm::vulkan::Usage::UNIFORM;
+    }
+    if (usage & HBM_USAGE_GPU_STORAGE) > 0 {
+        vk_usage |= hbm::vulkan::Usage::STORAGE;
+    }
+    if (usage & HBM_USAGE_GPU_SAMPLED) > 0 {
+        vk_usage |= hbm::vulkan::Usage::SAMPLED;
+    }
+    if (usage & HBM_USAGE_GPU_COLOR) > 0 {
+        vk_usage |= hbm::vulkan::Usage::COLOR;
+    }
+
+    vk_usage
+}
+
+/// The memory type is local to the backend.
+pub const HBM_MEMORY_FLAG_LOCAL: u32 = 1 << 0;
+/// The memory type is mappable.
+pub const HBM_MEMORY_FLAG_MAPPABLE: u32 = 1 << 1;
+/// The memory type is coherent.
+pub const HBM_MEMORY_FLAG_COHERENT: u32 = 1 << 2;
+/// The memory type is cached.
+pub const HBM_MEMORY_FLAG_CACHED: u32 = 1 << 3;
+
+fn memory_flags_from(mem_flags: hbm::MemoryFlags) -> u32 {
+    let mut flags = 0;
+    if mem_flags.contains(hbm::MemoryFlags::LOCAL) {
+        flags |= HBM_MEMORY_FLAG_LOCAL;
+    }
+    if mem_flags.contains(hbm::MemoryFlags::MAPPABLE) {
+        flags |= HBM_MEMORY_FLAG_MAPPABLE;
+    }
+    if mem_flags.contains(hbm::MemoryFlags::COHERENT) {
+        flags |= HBM_MEMORY_FLAG_COHERENT;
+    }
+    if mem_flags.contains(hbm::MemoryFlags::CACHED) {
+        flags |= HBM_MEMORY_FLAG_CACHED;
+    }
+
+    flags
+}
+
+fn memory_flags_into(flags: u32) -> hbm::MemoryFlags {
+    let mut mem_flags = hbm::MemoryFlags::empty();
+    if (flags & HBM_MEMORY_FLAG_LOCAL) > 0 {
+        mem_flags |= hbm::MemoryFlags::LOCAL;
+    }
+    if (flags & HBM_MEMORY_FLAG_MAPPABLE) > 0 {
+        mem_flags |= hbm::MemoryFlags::MAPPABLE;
+    }
+    if (flags & HBM_MEMORY_FLAG_COHERENT) > 0 {
+        mem_flags |= hbm::MemoryFlags::COHERENT;
+    }
+    if (flags & HBM_MEMORY_FLAG_CACHED) > 0 {
+        mem_flags |= hbm::MemoryFlags::CACHED;
+    }
+
+    mem_flags
+}
+
+/// Describes a BO.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[repr(C)]
+pub struct hbm_description {
+    /// A bitmask of `HBM_RESOURCE_FLAG_*`.
+    pub flags: u32,
+
+    /// When the format is `DRM_FORMAT_INVALID`, the BO is a buffer.  Otherwise,
+    /// the BO is an image.
+    pub format: u32,
+
+    /// The modifier can be `DRM_FORMAT_MOD_INVALID` or any valid modifier.  When it is
+    /// `DRM_FORMAT_MOD_INVALID`, HBM will pick the optimal modifier for the BO.
+    pub modifier: u64,
+
+    /// A bitmask of `HBM_USAGE_*`.
+    pub usage: u64,
+}
+
+impl hbm_description {
+    fn into(desc: *const Self) -> Self {
+        // SAFETY: desc is non-NULL
+        unsafe { *desc }
+    }
+}
 
 /// A hardware device.
 ///
@@ -87,39 +195,8 @@ impl CDevice {
     }
 
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
-        let mut flags = hbm::ResourceFlags::empty();
-        if (desc.flags & HBM_FLAG_MAP) > 0 {
-            flags |= hbm::ResourceFlags::MAP;
-        }
-        if (desc.flags & HBM_FLAG_COPY) > 0 {
-            flags |= hbm::ResourceFlags::COPY;
-        }
-        if (desc.flags & HBM_FLAG_PROTECTED) > 0 {
-            flags |= hbm::ResourceFlags::PROTECTED;
-        }
-        if (desc.flags & HBM_FLAG_NO_COMPRESSION) > 0 {
-            flags |= hbm::ResourceFlags::NO_COMPRESSION;
-        }
-        if (desc.flags & HBM_FLAG_SCANOUT) > 0 {
-            flags |= hbm::ResourceFlags::SCANOUT;
-        }
-
-        let mut vk_usage = hbm::vulkan::Usage::empty();
-        if (desc.usage & HBM_USAGE_GPU_TRANSFER) > 0 {
-            vk_usage |= hbm::vulkan::Usage::TRANSFER;
-        }
-        if (desc.usage & HBM_USAGE_GPU_UNIFORM) > 0 {
-            vk_usage |= hbm::vulkan::Usage::UNIFORM;
-        }
-        if (desc.usage & HBM_USAGE_GPU_STORAGE) > 0 {
-            vk_usage |= hbm::vulkan::Usage::STORAGE;
-        }
-        if (desc.usage & HBM_USAGE_GPU_SAMPLED) > 0 {
-            vk_usage |= hbm::vulkan::Usage::SAMPLED;
-        }
-        if (desc.usage & HBM_USAGE_GPU_COLOR) > 0 {
-            vk_usage |= hbm::vulkan::Usage::COLOR;
-        }
+        let flags = resource_flags_into(desc.flags);
+        let vk_usage = usage_into(desc.usage);
 
         let desc = hbm::Description::new()
             .flags(flags)
@@ -144,32 +221,6 @@ impl CDevice {
         };
 
         Ok(class)
-    }
-}
-
-/// Describes a BO.
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-#[repr(C)]
-pub struct hbm_description {
-    /// A bitmask of `HBM_FLAG_*`.
-    pub flags: u32,
-
-    /// When the format is `DRM_FORMAT_INVALID`, the BO is a buffer.  Otherwise,
-    /// the BO is an image.
-    pub format: u32,
-
-    /// The modifier can be `DRM_FORMAT_MOD_INVALID` or any valid modifier.  When it is
-    /// `DRM_FORMAT_MOD_INVALID`, HBM will pick the optimal modifier for the BO.
-    pub modifier: u64,
-
-    /// A bitmask of `HBM_USAGE_*`.
-    pub usage: u64,
-}
-
-impl hbm_description {
-    fn into(desc: *const Self) -> Self {
-        // SAFETY: desc is non-NULL
-        unsafe { *desc }
     }
 }
 
@@ -282,6 +333,16 @@ impl hbm_bo {
         // SAFETY: bo was created by Self::from
         unsafe { &mut *(bo as *mut hbm::Bo) }
     }
+}
+
+fn rawfd_borrow<'a>(fd: RawFd) -> Option<BorrowedFd<'a>> {
+    if fd < 0 {
+        return None;
+    }
+
+    // SAFETY: fd is valid
+    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
+    Some(fd)
 }
 
 fn rawfd_try_into(fd: RawFd) -> Option<OwnedFd> {
@@ -560,7 +621,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
         // SAFETY: out_mods is large enough for mod_max modifiers
         let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_len) };
 
-        for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
+        for (dst, src) in out_mods.iter_mut().zip(mods.into_iter()) {
             *dst = src.0;
         }
     }
@@ -568,7 +629,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     mod_len as i32
 }
 
-/// Allocates a BO.
+/// Create a BO with a constraint.
 ///
 /// `con` is optional.
 ///
@@ -578,7 +639,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
 ///
 /// `desc` and `extent` must be non-NULL.
 #[no_mangle]
-pub unsafe extern "C" fn hbm_bo_create(
+pub unsafe extern "C" fn hbm_bo_create_with_constraint(
     dev: *mut hbm_device,
     desc: *const hbm_description,
     extent: *const hbm_extent,
@@ -595,30 +656,15 @@ pub unsafe extern "C" fn hbm_bo_create(
         _ => return ptr::null_mut(),
     };
 
-    let mut bo = match hbm::Bo::with_constraint(dev.device.clone(), class, extent, con) {
+    let bo = match hbm::Bo::with_constraint(dev.device.clone(), class, extent, con) {
         Ok(bo) => bo,
         _ => return ptr::null_mut(),
     };
 
-    let mut flags = hbm::MemoryFlags::empty();
-    if (desc.flags & HBM_FLAG_MAP) > 0 {
-        flags |= hbm::MemoryFlags::MAPPABLE;
-        if (desc.flags & HBM_FLAG_COHERENT) > 0 {
-            flags |= hbm::MemoryFlags::COHERENT;
-        }
-        if (desc.flags & HBM_FLAG_NO_CACHE) == 0 {
-            flags |= hbm::MemoryFlags::CACHED;
-        }
-    }
-
-    if bo.bind_memory(flags, None).is_err() {
-        return ptr::null_mut();
-    }
-
     hbm_bo::from(bo)
 }
 
-/// Imports a dma-buf as a BO.
+/// Create a BO with an explicit layout.
 ///
 /// # Safety
 ///
@@ -628,17 +674,15 @@ pub unsafe extern "C" fn hbm_bo_create(
 ///
 /// `dmabuf` must be a valid dma-buf.
 #[no_mangle]
-pub unsafe extern "C" fn hbm_bo_import_dma_buf(
+pub unsafe extern "C" fn hbm_bo_create_with_layout(
     dev: *mut hbm_device,
     desc: *const hbm_description,
     extent: *const hbm_extent,
-    dmabuf: i32,
     layout: *const hbm_layout,
 ) -> *mut hbm_bo {
     let dev = CDevice::as_mut(dev);
     let desc = hbm_description::into(desc);
     let extent = hbm_extent::into(extent);
-    let dmabuf = rawfd_try_into(dmabuf).unwrap();
     let layout = hbm_layout::into(layout);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
@@ -647,25 +691,10 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
         _ => return ptr::null_mut(),
     };
 
-    let mut bo = match hbm::Bo::with_layout(dev.device.clone(), class, extent, layout) {
+    let bo = match hbm::Bo::with_layout(dev.device.clone(), class, extent, layout) {
         Ok(bo) => bo,
         _ => return ptr::null_mut(),
     };
-
-    let mut flags = hbm::MemoryFlags::empty();
-    if (desc.flags & HBM_FLAG_MAP) > 0 {
-        flags |= hbm::MemoryFlags::MAPPABLE;
-        if (desc.flags & HBM_FLAG_COHERENT) > 0 {
-            flags |= hbm::MemoryFlags::COHERENT;
-        }
-        if (desc.flags & HBM_FLAG_NO_CACHE) == 0 {
-            flags |= hbm::MemoryFlags::CACHED;
-        }
-    }
-
-    if bo.bind_memory(flags, Some(dmabuf)).is_err() {
-        return ptr::null_mut();
-    }
 
     hbm_bo::from(bo)
 }
@@ -678,24 +707,6 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
     let _ = hbm_bo::into(bo);
-}
-
-/// Exports a dma-buf from a BO.
-///
-/// # Safety
-///
-/// `bo` must be a valid BO.
-#[no_mangle]
-pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
-    let bo = hbm_bo::as_ref(bo);
-    let name = str_as_ref(name);
-
-    let dmabuf = match bo.export_dma_buf(name) {
-        Ok(dmabuf) => dmabuf,
-        _ => return -1,
-    };
-
-    rawfd_from(dmabuf)
 }
 
 /// Queries the physical layout of a BO.
@@ -720,6 +731,74 @@ pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_lay
     out_layout.strides = layout.strides;
 
     true
+}
+
+/// Queries supported memory types of a BO.
+///
+/// # Safety
+///
+/// `bo` must be a valid BO.
+#[no_mangle]
+pub unsafe extern "C" fn hbm_bo_memory_types(
+    bo: *mut hbm_bo,
+    dmabuf: i32,
+    mt_max: u32,
+    out_mts: *mut u32,
+) -> u32 {
+    let bo = hbm_bo::as_ref(bo);
+    let dmabuf = rawfd_borrow(dmabuf);
+
+    let mts = bo.memory_types(dmabuf);
+    let mut mt_len = mts.len();
+    if mt_max > 0 {
+        if mt_len > mt_max as _ {
+            mt_len = mt_max as _;
+        }
+
+        // SAFETY: out_mts is large enough for mt_max memory types
+        let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_len) };
+
+        for (dst, src) in out_mts.iter_mut().zip(mts.into_iter()) {
+            *dst = memory_flags_from(src);
+        }
+    }
+
+    mt_len as u32
+}
+
+/// Bind memory to a BO.
+///
+/// # Safety
+///
+/// `bo` must be a valid BO.
+#[no_mangle]
+pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, flags: u32, dmabuf: i32) -> bool {
+    let bo = hbm_bo::as_mut(bo);
+    let flags = memory_flags_into(flags);
+    let dmabuf = rawfd_try_into(dmabuf);
+
+    match bo.bind_memory(flags, dmabuf) {
+        Ok(_) => true,
+        Err(_) => false,
+    }
+}
+
+/// Exports a dma-buf from a BO.
+///
+/// # Safety
+///
+/// `bo` must be a valid BO.
+#[no_mangle]
+pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
+    let bo = hbm_bo::as_ref(bo);
+    let name = str_as_ref(name);
+
+    let dmabuf = match bo.export_dma_buf(name) {
+        Ok(dmabuf) => dmabuf,
+        _ => return -1,
+    };
+
+    rawfd_from(dmabuf)
 }
 
 /// Map a BO for direct CPU access.
