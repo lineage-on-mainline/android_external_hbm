@@ -1037,21 +1037,21 @@ impl Device {
         Ok(props)
     }
 
-    fn get_dma_buf_mt_mask(&self, dmabuf: &OwnedFd) -> Result<u32> {
+    fn get_dma_buf_mt_mask(&self, dmabuf: &OwnedFd) -> u32 {
         // ignore self.properties().external_memory_type
         let external_memory_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
 
         let mut fd_props = vk::MemoryFdPropertiesKHR::default();
         // SAFETY: ok
-        unsafe {
+        let _ = unsafe {
             self.dispatch.memory.get_memory_fd_properties(
                 external_memory_type,
                 dmabuf.as_raw_fd(),
                 &mut fd_props,
             )
-        }?;
+        };
 
-        Ok(fd_props.memory_type_bits)
+        fd_props.memory_type_bits
     }
 
     fn memory_types(&self, mt_mask: u32) -> Vec<(u32, vk::MemoryPropertyFlags)> {
@@ -1700,13 +1700,11 @@ impl Buffer {
         dev: Arc<Device>,
         buf_info: BufferInfo,
         size: vk::DeviceSize,
-        dmabuf: &OwnedFd,
         layout: Layout,
     ) -> Result<Self> {
-        let mut buf = Self::new(dev, buf_info, size)?;
+        let buf = Self::new(dev, buf_info, size)?;
 
-        buf.mt_mask &= buf.device.get_dma_buf_mt_mask(dmabuf).unwrap_or(0);
-        if buf.size > layout.size || buf.mt_mask == 0 {
+        if buf.size > layout.size {
             return Err(Error::InvalidParam);
         }
 
@@ -1754,8 +1752,9 @@ impl Buffer {
         Ok(layout)
     }
 
-    pub fn memory_types(&self) -> Vec<(u32, vk::MemoryPropertyFlags)> {
-        self.device.memory_types(self.mt_mask)
+    pub fn memory_types(&self, dmabuf: Option<&OwnedFd>) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+        let mt_mask = dmabuf.map_or(u32::MAX, |dmabuf| self.device.get_dma_buf_mt_mask(dmabuf));
+        self.device.memory_types(self.mt_mask & mt_mask)
     }
 
     pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
@@ -1876,7 +1875,6 @@ impl Image {
         img_info: ImageInfo,
         width: u32,
         height: u32,
-        dmabuf: &OwnedFd,
         layout: Layout,
     ) -> Result<Self> {
         let tiling = dev.get_image_tiling(layout.modifier);
@@ -1893,10 +1891,9 @@ impl Image {
                 slice::from_ref(&layout.modifier),
             )?
         };
-        let mut img = Self::new(dev, handle, tiling, img_info.format);
+        let img = Self::new(dev, handle, tiling, img_info.format);
 
-        img.mt_mask &= img.device.get_dma_buf_mt_mask(dmabuf).unwrap_or(0);
-        if img.size > layout.size || img.mt_mask == 0 {
+        if img.size > layout.size {
             return Err(Error::InvalidParam);
         }
 
@@ -2020,8 +2017,9 @@ impl Image {
         Ok(layout.size(self.size))
     }
 
-    pub fn memory_types(&self) -> Vec<(u32, vk::MemoryPropertyFlags)> {
-        self.device.memory_types(self.mt_mask)
+    pub fn memory_types(&self, dmabuf: Option<&OwnedFd>) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+        let mt_mask = dmabuf.map_or(u32::MAX, |dmabuf| self.device.get_dma_buf_mt_mask(dmabuf));
+        self.device.memory_types(self.mt_mask & mt_mask)
     }
 
     pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {

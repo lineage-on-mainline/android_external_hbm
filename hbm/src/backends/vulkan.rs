@@ -237,7 +237,7 @@ impl super::Backend for Backend {
             let mut buf =
                 sash::Buffer::with_size(self.device.clone(), buf_info, extent.size(), con)?;
 
-            let mem_info = get_memory_info(class.description, buf.memory_types())?;
+            let mem_info = get_memory_info(class.description, buf.memory_types(None))?;
             buf.bind_memory(mem_info, None)?;
 
             Handle::new(HandlePayload::Buffer(buf))
@@ -270,7 +270,7 @@ impl super::Backend for Backend {
                 con,
             )?;
 
-            let mem_info = get_memory_info(class.description, img.memory_types())?;
+            let mem_info = get_memory_info(class.description, img.memory_types(None))?;
             img.bind_memory(mem_info, None)?;
 
             Handle::new(HandlePayload::Image(img))
@@ -288,15 +288,10 @@ impl super::Backend for Backend {
     ) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let mut buf = sash::Buffer::with_dma_buf(
-                self.device.clone(),
-                buf_info,
-                extent.size(),
-                &dmabuf,
-                layout,
-            )?;
+            let mut buf =
+                sash::Buffer::with_dma_buf(self.device.clone(), buf_info, extent.size(), layout)?;
 
-            let mem_info = get_memory_info(class.description, buf.memory_types())?;
+            let mem_info = get_memory_info(class.description, buf.memory_types(Some(&dmabuf)))?;
             buf.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Buffer(buf))
@@ -307,11 +302,10 @@ impl super::Backend for Backend {
                 img_info,
                 extent.width(),
                 extent.height(),
-                &dmabuf,
                 layout,
             )?;
 
-            let mem_info = get_memory_info(class.description, img.memory_types())?;
+            let mem_info = get_memory_info(class.description, img.memory_types(Some(&dmabuf)))?;
             img.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Image(img))
