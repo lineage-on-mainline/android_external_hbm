@@ -403,7 +403,7 @@ impl Layout {
 }
 
 pub(crate) enum HandlePayload {
-    DmaBuf(dma_buf::Payload),
+    DmaBuf(dma_buf::Resource),
     Buffer(sash::Buffer),
     Image(sash::Image),
 }

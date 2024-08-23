@@ -6,14 +6,40 @@ use super::types::{Access, Error, Mapping, Result};
 use super::utils;
 use std::os::fd::OwnedFd;
 
-pub struct Payload {
-    layout: Layout,
-    dmabuf: OwnedFd,
+pub struct Resource {
+    pub layout: Layout,
+    dmabuf: Option<OwnedFd>,
 }
 
-impl Payload {
-    pub fn new(layout: Layout, dmabuf: OwnedFd) -> Self {
-        Self { layout, dmabuf }
+impl Resource {
+    pub fn new(layout: Layout) -> Self {
+        Self {
+            layout,
+            dmabuf: None,
+        }
+    }
+
+    pub fn bind(&mut self, dmabuf: OwnedFd) {
+        self.dmabuf = Some(dmabuf);
+    }
+
+    pub fn dmabuf(&self) -> &OwnedFd {
+        self.dmabuf.as_ref().unwrap()
+    }
+}
+
+impl From<Resource> for Handle {
+    fn from(res: Resource) -> Self {
+        Handle::new(HandlePayload::DmaBuf(res))
+    }
+}
+
+impl AsRef<Resource> for Handle {
+    fn as_ref(&self) -> &Resource {
+        match self.payload {
+            HandlePayload::DmaBuf(ref res) => res,
+            _ => unreachable!(),
+        }
     }
 }
 
@@ -54,43 +80,37 @@ pub fn import_dma_buf(
         return Err(Error::InvalidParam);
     }
 
-    let payload = Payload::new(layout, dmabuf);
-    let handle = Handle::new(HandlePayload::DmaBuf(payload));
+    let mut res = Resource::new(layout);
+    res.bind(dmabuf);
+
+    let handle = Handle::from(res);
+
     Ok(handle)
 }
 
 pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
-    let payload = match &handle.payload {
-        HandlePayload::DmaBuf(payload) => payload,
-        _ => return Err(Error::NoSupport),
-    };
+    let dmabuf = handle.as_ref().dmabuf();
 
     if let Some(name) = name {
-        let _ = utils::dma_buf_set_name(&payload.dmabuf, name);
+        let _ = utils::dma_buf_set_name(dmabuf, name);
     }
 
-    let dmabuf = payload.dmabuf.try_clone().map_err(Error::from)?;
+    let dmabuf = dmabuf.try_clone().map_err(Error::from)?;
 
     Ok(dmabuf)
 }
 
 pub fn layout(handle: &Handle) -> Result<Layout> {
-    let payload = match &handle.payload {
-        HandlePayload::DmaBuf(payload) => payload,
-        _ => return Err(Error::NoSupport),
-    };
+    let layout = handle.as_ref().layout;
 
-    Ok(payload.layout)
+    Ok(layout)
 }
 
 pub fn map(handle: &Handle) -> Result<Mapping> {
-    let payload = match &handle.payload {
-        HandlePayload::DmaBuf(payload) => payload,
-        _ => return Err(Error::NoSupport),
-    };
+    let dmabuf = handle.as_ref().dmabuf();
 
-    let len = utils::seek_end(&payload.dmabuf)?;
-    let mapping = utils::mmap(&payload.dmabuf, len, Access::ReadWrite)?;
+    let len = utils::seek_end(dmabuf)?;
+    let mapping = utils::mmap(dmabuf, len, Access::ReadWrite)?;
 
     Ok(mapping)
 }
@@ -118,19 +138,13 @@ pub fn unmap(_handle: &Handle, mapping: Mapping) {
 // and abuse it for flush/invalidate.  These are not used in most setups anyway.
 
 pub fn flush(handle: &Handle) -> Result<()> {
-    let payload = match &handle.payload {
-        HandlePayload::DmaBuf(payload) => payload,
-        _ => return Err(Error::NoSupport),
-    };
+    let dmabuf = handle.as_ref().dmabuf();
 
-    utils::dma_buf_sync(&payload.dmabuf, Access::ReadWrite, false)
+    utils::dma_buf_sync(dmabuf, Access::ReadWrite, false)
 }
 
 pub fn invalidate(handle: &Handle) -> Result<()> {
-    let payload = match &handle.payload {
-        HandlePayload::DmaBuf(payload) => payload,
-        _ => return Err(Error::NoSupport),
-    };
+    let dmabuf = handle.as_ref().dmabuf();
 
-    utils::dma_buf_sync(&payload.dmabuf, Access::ReadWrite, true)
+    utils::dma_buf_sync(dmabuf, Access::ReadWrite, true)
 }
