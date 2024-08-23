@@ -424,7 +424,7 @@ impl Handle {
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, PartialEq)]
     pub struct MemoryFlags: u32 {
-        const SYSTEM = 1 << 0;
+        const LOCAL = 1 << 0;
         const MAPPABLE = 1 << 1;
         const COHERENT = 1 << 2;
         const CACHED = 1 << 3;

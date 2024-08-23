@@ -126,8 +126,8 @@ fn get_memory_flags(memory_types: Vec<(u32, vk::MemoryPropertyFlags)>) -> Vec<Me
             mt_flags &= known_mt_flags;
 
             let mut flags = MemoryFlags::empty();
-            if !mt_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                flags |= MemoryFlags::SYSTEM;
+            if mt_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+                flags |= MemoryFlags::LOCAL;
             }
             if mt_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
                 flags |= MemoryFlags::MAPPABLE;
@@ -152,10 +152,10 @@ fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>
 
     let mut required_flags = vk::MemoryPropertyFlags::empty();
     let mut disallowed_flags = vk::MemoryPropertyFlags::empty();
-    if flags.contains(MemoryFlags::SYSTEM) {
-        disallowed_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
-    } else {
+    if flags.contains(MemoryFlags::LOCAL) {
         required_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
+    } else {
+        disallowed_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
     }
     if flags.contains(MemoryFlags::MAPPABLE) {
         required_flags |= vk::MemoryPropertyFlags::HOST_VISIBLE;
