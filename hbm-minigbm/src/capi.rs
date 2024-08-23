@@ -629,6 +629,34 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     mod_len as i32
 }
 
+/// Queries modifier support for a BO description.
+///
+/// # Safety
+///
+/// `dev` must be a valid device.
+///
+/// `desc` must be non-NULL.
+#[no_mangle]
+pub unsafe extern "C" fn hbm_device_supports_modifier(
+    dev: *mut hbm_device,
+    desc: *const hbm_description,
+    modifier: u64,
+) -> bool {
+    let dev = CDevice::as_mut(dev);
+    let desc = hbm_description::into(desc);
+
+    let mut class_cache = dev.class_cache.lock().unwrap();
+    let class = match dev.get_class(&mut class_cache, desc) {
+        Ok(class) => class,
+        _ => return false,
+    };
+
+    dev.device
+        .modifiers(class)
+        .map(|mods| mods.iter().any(|m| m.0 == modifier))
+        .unwrap_or(false)
+}
+
 /// Create a BO with a constraint.
 ///
 /// `con` is optional.
