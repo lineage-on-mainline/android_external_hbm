@@ -188,24 +188,6 @@ fn get_image(handle: &Handle) -> Result<&sash::Image> {
     Ok(img)
 }
 
-fn get_buffer_mut(handle: &mut Handle) -> Result<&mut sash::Buffer> {
-    let buf = match handle.payload {
-        HandlePayload::Buffer(ref mut buf) => buf,
-        _ => return Err(Error::NoSupport),
-    };
-
-    Ok(buf)
-}
-
-fn get_image_mut(handle: &mut Handle) -> Result<&mut sash::Image> {
-    let img = match handle.payload {
-        HandlePayload::Image(ref mut img) => img,
-        _ => return Err(Error::NoSupport),
-    };
-
-    Ok(img)
-}
-
 pub struct Backend {
     device: Arc<sash::Device>,
 }
@@ -324,14 +306,18 @@ impl super::Backend for Backend {
         class: &Class,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
-        if class.description.is_buffer() {
-            let buf = get_buffer_mut(handle)?;
-            let mem_info = get_memory_info(class.description, buf.memory_types(dmabuf.as_ref()))?;
-            buf.bind_memory(mem_info, dmabuf)
-        } else {
-            let img = get_image_mut(handle)?;
-            let mem_info = get_memory_info(class.description, img.memory_types(dmabuf.as_ref()))?;
-            img.bind_memory(mem_info, dmabuf)
+        match handle.payload {
+            HandlePayload::Buffer(ref mut buf) => {
+                let mem_info =
+                    get_memory_info(class.description, buf.memory_types(dmabuf.as_ref()))?;
+                buf.bind_memory(mem_info, dmabuf)
+            }
+            HandlePayload::Image(ref mut img) => {
+                let mem_info =
+                    get_memory_info(class.description, img.memory_types(dmabuf.as_ref()))?;
+                img.bind_memory(mem_info, dmabuf)
+            }
+            _ => Err(Error::NoSupport),
         }
     }
 
