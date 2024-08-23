@@ -12,13 +12,14 @@ fn test_image(dev: Arc<hbm::Device>) {
 
     let img_width = 63;
     let img_height = 63;
-    let mut img_bo = hbm::Bo::new(
+    let mut img_bo = hbm::Bo::with_constraint(
         dev.clone(),
         &img_class,
         hbm::Extent::new_2d(img_width, img_height),
         None,
     )
     .unwrap();
+    img_bo.bind_memory(&img_class, None).unwrap();
 
     let img_dmabuf = img_bo.export_dma_buf(Some("img")).unwrap();
     let img_layout = img_bo.layout().unwrap();
@@ -33,14 +34,14 @@ fn test_image(dev: Arc<hbm::Device>) {
         );
     }
 
-    let _ = hbm::Bo::with_dma_buf(
+    let mut img_bo2 = hbm::Bo::with_layout(
         dev.clone(),
         &img_class,
         hbm::Extent::new_2d(img_width, img_height),
-        img_dmabuf,
         img_layout,
     )
     .unwrap();
+    img_bo2.bind_memory(&img_class, Some(img_dmabuf)).unwrap();
 
     img_bo.map().unwrap();
     img_bo.flush().unwrap();
@@ -61,8 +62,10 @@ fn test_image(dev: Arc<hbm::Device>) {
     let buf_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let buf_class = dev.classify(buf_desc, slice::from_ref(&buf_usage)).unwrap();
     let buf_size = (img_width * img_height * 4) as u64;
-    let buf_bo =
-        hbm::Bo::new(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None).unwrap();
+    let mut buf_bo =
+        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
+            .unwrap();
+    buf_bo.bind_memory(&buf_class, None).unwrap();
 
     buf_bo
         .copy_buffer_image(&img_bo, img_copy, None, true)
@@ -79,20 +82,22 @@ fn test_buffer(dev: Arc<hbm::Device>) {
 
     let buf_size = 13;
     let mut buf_bo =
-        hbm::Bo::new(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None).unwrap();
+        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
+            .unwrap();
+    buf_bo.bind_memory(&buf_class, None).unwrap();
 
     let buf_dmabuf = buf_bo.export_dma_buf(Some("buf")).unwrap();
     let buf_layout = buf_bo.layout().unwrap();
     println!("buf size {} alloc {}", buf_size, buf_layout.size);
 
-    let _ = hbm::Bo::with_dma_buf(
+    let mut buf_bo2 = hbm::Bo::with_layout(
         dev.clone(),
         &buf_class,
         hbm::Extent::new_1d(buf_size),
-        buf_dmabuf,
         buf_layout,
     )
     .unwrap();
+    buf_bo2.bind_memory(&buf_class, Some(buf_dmabuf)).unwrap();
 
     buf_bo.map().unwrap();
     buf_bo.flush().unwrap();
@@ -104,8 +109,11 @@ fn test_buffer(dev: Arc<hbm::Device>) {
         dst_offset: 0,
         size: buf_size,
     };
-    let buf_src =
-        hbm::Bo::new(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None).unwrap();
+    let mut buf_src =
+        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
+            .unwrap();
+    buf_src.bind_memory(&buf_class, None).unwrap();
+
     buf_bo.copy_buffer(&buf_src, buf_copy, None, true).unwrap();
 }
 

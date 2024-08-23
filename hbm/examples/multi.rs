@@ -25,7 +25,8 @@ fn main() {
     let bo_class = dev.classify(bo_desc, &bo_usage).unwrap();
 
     let bo_extent = hbm::Extent::new_2d(256, 256);
-    let _bo = hbm::Bo::new(dev.clone(), &bo_class, bo_extent, None).unwrap();
+    let mut bo = hbm::Bo::with_constraint(dev.clone(), &bo_class, bo_extent, None).unwrap();
+    bo.bind_memory(&bo_class, None).unwrap();
 }
 
 #[cfg(not(feature = "drm"))]

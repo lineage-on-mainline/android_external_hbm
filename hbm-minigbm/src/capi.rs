@@ -600,10 +600,14 @@ pub unsafe extern "C" fn hbm_bo_create(
         _ => return ptr::null_mut(),
     };
 
-    let bo = match hbm::Bo::new(dev.device.clone(), class, extent, con) {
+    let mut bo = match hbm::Bo::with_constraint(dev.device.clone(), class, extent, con) {
         Ok(bo) => bo,
         _ => return ptr::null_mut(),
     };
+
+    if bo.bind_memory(class, None).is_err() {
+        return ptr::null_mut();
+    }
 
     hbm_bo::from(bo)
 }
@@ -637,10 +641,14 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
         _ => return ptr::null_mut(),
     };
 
-    let bo = match hbm::Bo::with_dma_buf(dev.device.clone(), class, extent, dmabuf, layout) {
+    let mut bo = match hbm::Bo::with_layout(dev.device.clone(), class, extent, layout) {
         Ok(bo) => bo,
         _ => return ptr::null_mut(),
     };
+
+    if bo.bind_memory(class, Some(dmabuf)).is_err() {
+        return ptr::null_mut();
+    }
 
     hbm_bo::from(bo)
 }

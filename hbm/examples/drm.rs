@@ -21,13 +21,14 @@ fn main() {
 
     let bo_width = 63;
     let bo_height = 63;
-    let mut bo = hbm::Bo::new(
+    let mut bo = hbm::Bo::with_constraint(
         dev.clone(),
         &bo_class,
         hbm::Extent::new_2d(bo_width, bo_height),
         None,
     )
     .unwrap();
+    bo.bind_memory(&bo_class, None).unwrap();
 
     let dmabuf = bo.export_dma_buf(Some("test")).unwrap();
     let layout = bo.layout().unwrap();
@@ -42,14 +43,14 @@ fn main() {
         );
     }
 
-    let _ = hbm::Bo::with_dma_buf(
+    let mut bo2 = hbm::Bo::with_layout(
         dev.clone(),
         &bo_class,
         hbm::Extent::new_2d(bo_width, bo_height),
-        dmabuf,
         layout,
     )
     .unwrap();
+    bo2.bind_memory(&bo_class, Some(dmabuf)).unwrap();
 
     bo.map().unwrap();
     bo.flush().unwrap();

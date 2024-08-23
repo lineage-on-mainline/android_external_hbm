@@ -26,7 +26,7 @@ pub struct Bo {
 }
 
 impl Bo {
-    pub fn new(
+    pub fn with_constraint(
         device: Arc<Device>,
         class: &Class,
         extent: Extent,
@@ -47,20 +47,16 @@ impl Bo {
         };
 
         let backend = &device.backends[class.backend_index];
-
-        let mut handle = backend.with_constraint(class, extent, con)?;
-        backend.bind_memory(&mut handle, class, None)?;
-
+        let handle = backend.with_constraint(class, extent, con)?;
         let bo = Self::with_handle(device, class, handle);
 
         Ok(bo)
     }
 
-    pub fn with_dma_buf(
+    pub fn with_layout(
         device: Arc<Device>,
         class: &Class,
         extent: Extent,
-        dmabuf: OwnedFd,
         layout: Layout,
     ) -> Result<Self> {
         if !class.validate(extent) {
@@ -68,10 +64,7 @@ impl Bo {
         }
 
         let backend = &device.backends[class.backend_index];
-
-        let mut handle = backend.with_layout(class, extent, layout)?;
-        backend.bind_memory(&mut handle, class, Some(dmabuf))?;
-
+        let handle = backend.with_layout(class, extent, layout)?;
         let bo = Self::with_handle(device, class, handle);
 
         Ok(bo)
@@ -99,13 +92,19 @@ impl Bo {
         self.device.backend(self.handle.backend_index)
     }
 
+    pub fn layout(&self) -> Result<Layout> {
+        self.backend().layout(&self.handle)
+    }
+
+    pub fn bind_memory(&mut self, class: &Class, dmabuf: Option<OwnedFd>) -> Result<()> {
+        let backend = self.device.backend(self.handle.backend_index);
+        let handle = &mut self.handle;
+        backend.bind_memory(handle, class, dmabuf)
+    }
+
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
         // TODO this can race with map/unmap
         self.backend().export_dma_buf(&self.handle, name)
-    }
-
-    pub fn layout(&self) -> Result<Layout> {
-        self.backend().layout(&self.handle)
     }
 
     pub fn map(&mut self) -> Result<Mapping> {
