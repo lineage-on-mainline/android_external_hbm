@@ -224,6 +224,10 @@ impl Drop for Instance {
     }
 }
 
+struct FormatProperties {
+    modifiers: Vec<vk::DrmFormatModifierPropertiesEXT>,
+}
+
 #[derive(Default)]
 struct DeviceCreateInfo {
     extensions: [bool; ExtId::Count as usize],
@@ -246,7 +250,7 @@ struct PhysicalDeviceProperties {
     queue_family: u32,
     memory_types: Vec<vk::MemoryPropertyFlags>,
 
-    formats: HashMap<vk::Format, Vec<vk::DrmFormatModifierPropertiesEXT>>,
+    formats: HashMap<vk::Format, FormatProperties>,
 
     external_memory_type: vk::ExternalMemoryHandleTypeFlags,
 }
@@ -571,7 +575,8 @@ impl PhysicalDevice {
             let fmt_plane_count = formats::plane_count(drm_fmt).unwrap() as u32;
             let mods = self.get_format_properties(fmt, fmt_plane_count);
 
-            self.properties.formats.insert(fmt, mods);
+            let fmt_props = FormatProperties { modifiers: mods };
+            self.properties.formats.insert(fmt, fmt_props);
         }
 
         Ok(())
@@ -796,13 +801,13 @@ impl Device {
     }
 
     pub fn memory_plane_count(&self, fmt: vk::Format, modifier: Modifier) -> Result<u32> {
-        let mod_props_list = self
+        let fmt_props = self
             .properties()
             .formats
             .get(&fmt)
             .ok_or(Error::NoSupport)?;
 
-        mod_props_list
+        fmt_props.modifiers
             .iter()
             .find_map(|mod_props| {
                 if mod_props.drm_format_modifier == modifier.0 {
@@ -960,14 +965,15 @@ impl Device {
             required_feats |= vk::FormatFeatureFlags::COLOR_ATTACHMENT;
         }
 
-        let mod_props_list = self
+        let fmt_props = self
             .properties()
             .formats
             .get(&img_info.format)
             .ok_or(Error::NoSupport)?;
 
         // get supported modifiers
-        let mut modifiers: Vec<Modifier> = mod_props_list
+        let mut modifiers: Vec<Modifier> = fmt_props
+            .modifiers
             .iter()
             .filter_map(|mod_props| {
                 let candidate = Modifier(mod_props.drm_format_modifier);
