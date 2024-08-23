@@ -1,7 +1,9 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::backends::{Class, Description, Extent, Flags, Handle, HandlePayload, Layout, Usage};
+use super::backends::{
+    Class, Constraint, Description, Extent, Flags, Handle, HandlePayload, Layout, Usage,
+};
 use super::types::{Access, Error, Mapping, Result};
 use super::utils;
 use std::os::fd::OwnedFd;
@@ -43,6 +45,15 @@ impl AsRef<Resource> for Handle {
     }
 }
 
+impl AsMut<Resource> for Handle {
+    fn as_mut(&mut self) -> &mut Resource {
+        match self.payload {
+            HandlePayload::DmaBuf(ref mut res) => res,
+            _ => unreachable!(),
+        }
+    }
+}
+
 pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
     if !desc.is_buffer() && !desc.modifier.is_linear() {
         return Err(Error::NoSupport);
@@ -61,31 +72,38 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
     Ok(class)
 }
 
-pub fn import_dma_buf(
-    class: &Class,
-    extent: Extent,
-    dmabuf: OwnedFd,
-    layout: Layout,
-) -> Result<Handle> {
+pub fn with_constraint(class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {
+    let layout = Layout::packed(class, extent, con)?;
+    let handle = Handle::from(Resource::new(layout));
+
+    Ok(handle)
+}
+
+pub fn with_layout(class: &Class, extent: Extent, layout: Layout) -> Result<Handle> {
     let packed = Layout::packed(class, extent, None)?;
-    if packed.size > layout.size
-        || packed.modifier != layout.modifier
-        || packed.plane_count != layout.plane_count
+    if layout.size < packed.size
+        || layout.modifier != packed.modifier
+        || layout.plane_count != packed.plane_count
     {
         return Err(Error::InvalidParam);
     }
 
+    let handle = Handle::from(Resource::new(layout));
+
+    Ok(handle)
+}
+
+pub fn bind_memory(handle: &mut Handle, dmabuf: OwnedFd) -> Result<()> {
+    let res = handle.as_mut();
+
     let size = utils::seek_end(&dmabuf)?;
-    if size < layout.size {
+    if res.layout.size > size {
         return Err(Error::InvalidParam);
     }
 
-    let mut res = Resource::new(layout);
     res.bind(dmabuf);
 
-    let handle = Handle::from(res);
-
-    Ok(handle)
+    Ok(())
 }
 
 pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {

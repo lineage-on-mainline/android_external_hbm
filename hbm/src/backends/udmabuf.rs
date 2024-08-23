@@ -1,7 +1,7 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::{Class, Constraint, Extent, Handle, Layout};
+use super::{Class, Constraint, Extent, Handle};
 use crate::dma_buf;
 use crate::types::{Error, Result};
 use crate::utils;
@@ -13,14 +13,12 @@ pub struct Backend {
 
 impl super::Backend for Backend {
     fn allocate(&self, class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {
-        let layout = Layout::packed(class, extent, con)?;
-        let memfd = utils::memfd_create("udmabuf", layout.size)?;
-        let dmabuf = utils::udmabuf_alloc(&self.fd, memfd, layout.size)?;
+        let mut handle = dma_buf::with_constraint(class, extent, con)?;
 
-        let mut res = dma_buf::Resource::new(layout);
+        let res = handle.as_mut();
+        let memfd = utils::memfd_create("udmabuf", res.layout.size)?;
+        let dmabuf = utils::udmabuf_alloc(&self.fd, memfd, res.layout.size)?;
         res.bind(dmabuf);
-
-        let handle = Handle::from(res);
 
         Ok(handle)
     }

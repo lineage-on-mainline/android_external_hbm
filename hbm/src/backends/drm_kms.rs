@@ -267,10 +267,9 @@ impl super::Backend for Backend {
             return Err(Error::NoSupport);
         }
 
-        let mut res = dma_buf::Resource::new(layout);
+        let mut handle = Handle::from(dma_buf::Resource::new(layout));
+        let res = handle.as_mut();
         res.bind(dmabuf);
-
-        let handle = Handle::from(res);
 
         Ok(handle)
     }

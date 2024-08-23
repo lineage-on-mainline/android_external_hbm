@@ -468,7 +468,10 @@ pub trait Backend: Send + Sync {
         dmabuf: OwnedFd,
         layout: Layout,
     ) -> Result<Handle> {
-        dma_buf::import_dma_buf(class, extent, dmabuf, layout)
+        let mut handle = dma_buf::with_layout(class, extent, layout)?;
+        dma_buf::bind_memory(&mut handle, dmabuf)?;
+
+        Ok(handle)
     }
 
     fn free(&self, _handle: &Handle) {}
