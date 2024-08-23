@@ -336,16 +336,6 @@ pub fn to_vk(fmt: Format) -> Result<(vk::Format, Swizzle)> {
     }
 }
 
-pub fn from_vk(vk_fmt: vk::Format) -> Format {
-    // maybe sash should cache the reverse-mapping
-    for fmt in KNOWN_FORMATS {
-        if to_vk(fmt).unwrap().0 == vk_fmt {
-            return fmt;
-        }
-    }
-    unreachable!()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

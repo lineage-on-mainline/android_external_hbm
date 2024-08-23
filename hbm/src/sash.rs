@@ -225,6 +225,7 @@ impl Drop for Instance {
 }
 
 struct FormatProperties {
+    drm_format: super::types::Format,
     modifiers: Vec<vk::DrmFormatModifierPropertiesEXT>,
 }
 
@@ -575,7 +576,10 @@ impl PhysicalDevice {
             let fmt_plane_count = formats::plane_count(drm_fmt).unwrap() as u32;
             let mods = self.get_format_properties(fmt, fmt_plane_count);
 
-            let fmt_props = FormatProperties { modifiers: mods };
+            let fmt_props = FormatProperties {
+                drm_format: drm_fmt,
+                modifiers: mods,
+            };
             self.properties.formats.insert(fmt, fmt_props);
         }
 
@@ -807,7 +811,8 @@ impl Device {
             .get(&fmt)
             .ok_or(Error::NoSupport)?;
 
-        fmt_props.modifiers
+        fmt_props
+            .modifiers
             .iter()
             .find_map(|mod_props| {
                 if mod_props.drm_format_modifier == modifier.0 {
@@ -817,6 +822,16 @@ impl Device {
                 }
             })
             .ok_or(Error::NoSupport)
+    }
+
+    fn format_plane_count(&self, fmt: vk::Format) -> u32 {
+        let fmt_props = self.properties().formats.get(&fmt).unwrap();
+        formats::plane_count(fmt_props.drm_format).unwrap()
+    }
+
+    fn format_block_size(&self, fmt: vk::Format, plane: u32) -> u32 {
+        let fmt_props = self.properties().formats.get(&fmt).unwrap();
+        formats::block_size(fmt_props.drm_format, plane).unwrap()
     }
 
     pub fn buffer_properties(&self, buf_info: BufferInfo) -> Result<BufferProperties> {
@@ -1816,7 +1831,7 @@ impl Image {
         tiling: vk::ImageTiling,
         format: vk::Format,
     ) -> Self {
-        let format_plane_count = formats::plane_count(formats::from_vk(format)).unwrap();
+        let format_plane_count = device.format_plane_count(format);
         let mut img = Self {
             device,
             handle,
@@ -2045,7 +2060,7 @@ impl Image {
             }
         };
 
-        let bpp = formats::block_size(formats::from_vk(self.format), copy.plane).unwrap();
+        let bpp = self.device.format_block_size(self.format, copy.plane);
         let row_len = copy.stride as u32 / bpp;
 
         let subres = vk::ImageSubresourceLayers::default()
