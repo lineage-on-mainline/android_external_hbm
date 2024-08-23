@@ -555,8 +555,22 @@ impl PhysicalDevice {
     }
 
     fn probe_formats(&mut self) -> Result<()> {
-        for (fmt, fmt_plane_count) in formats::enumerate_vk() {
-            let mods = self.get_format_properties(fmt, fmt_plane_count as u32);
+        for drm_fmt in formats::KNOWN_FORMATS {
+            /* some drm formats cannot be mapped */
+            let fmt = formats::to_vk(drm_fmt);
+            if fmt.is_err() {
+                continue;
+            }
+
+            /* some drm formats map to the same vk formats */
+            let fmt = fmt.unwrap().0;
+            if self.properties.formats.contains_key(&fmt) {
+                continue;
+            }
+
+            let fmt_plane_count = formats::plane_count(drm_fmt).unwrap() as u32;
+            let mods = self.get_format_properties(fmt, fmt_plane_count);
+
             self.properties.formats.insert(fmt, mods);
         }
 

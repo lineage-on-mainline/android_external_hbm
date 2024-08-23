@@ -4,7 +4,7 @@
 use super::backends::{Constraint, Layout};
 use super::types::{Error, Format, Modifier, Result, Size};
 use ash::vk;
-use std::{slice, str};
+use std::str;
 
 // from drm_fourcc.h
 mod consts {
@@ -61,7 +61,7 @@ pub const R8: Format = Format(consts::DRM_FORMAT_R8);
 pub const MOD_INVALID: Modifier = Modifier(consts::DRM_FORMAT_MOD_INVALID);
 pub const MOD_LINEAR: Modifier = Modifier(consts::DRM_FORMAT_MOD_LINEAR);
 
-const KNOWN_FORMATS: [Format; 24] = [
+pub const KNOWN_FORMATS: [Format; 24] = [
     Format(consts::DRM_FORMAT_R8),
     Format(consts::DRM_FORMAT_BGR565),
     Format(consts::DRM_FORMAT_RGB565),
@@ -346,33 +346,6 @@ pub fn from_vk(vk_fmt: vk::Format) -> Format {
     unreachable!()
 }
 
-pub struct VkIter(slice::Iter<'static, Format>);
-
-impl Iterator for VkIter {
-    type Item = (vk::Format, u8);
-
-    fn next(&mut self) -> Option<Self::Item> {
-        for &fmt in self.0.by_ref() {
-            if let Ok((vk_fmt, swizzle)) = to_vk(fmt) {
-                // We want to return all unique vk formats.  It suffices to return all unswizzled
-                // formats given how to_vk works for now.
-                if swizzle != Swizzle::None {
-                    continue;
-                }
-
-                let plane_count = format_class(fmt).unwrap().plane_count;
-                return Some((vk_fmt, plane_count));
-            }
-        }
-
-        None
-    }
-}
-
-pub fn enumerate_vk() -> VkIter {
-    VkIter(KNOWN_FORMATS.iter())
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -438,22 +411,5 @@ mod tests {
             let (vk_fmt, _) = super::to_vk(fmt).unwrap();
             assert_ne!(vk_fmt, vk::Format::UNDEFINED);
         }
-    }
-
-    #[test]
-    fn enumerate_vk() {
-        let mut vk_fmts: Vec<vk::Format> = super::enumerate_vk().map(|(f, _)| f).collect();
-
-        let mut all_vk_fmts = Vec::new();
-        for fmt in KNOWN_FORMATS {
-            if let Ok((vk_fmt, _)) = super::to_vk(fmt) {
-                all_vk_fmts.push(vk_fmt);
-            }
-        }
-
-        vk_fmts.sort();
-        all_vk_fmts.sort();
-        all_vk_fmts.dedup();
-        assert_eq!(vk_fmts, all_vk_fmts);
     }
 }
