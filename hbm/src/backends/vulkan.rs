@@ -151,11 +151,8 @@ fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>
         | vk::MemoryPropertyFlags::HOST_CACHED;
 
     let mut required_flags = vk::MemoryPropertyFlags::empty();
-    let mut disallowed_flags = vk::MemoryPropertyFlags::empty();
     if flags.contains(MemoryFlags::LOCAL) {
         required_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
-    } else {
-        disallowed_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
     }
     if flags.contains(MemoryFlags::MAPPABLE) {
         required_flags |= vk::MemoryPropertyFlags::HOST_VISIBLE;
@@ -168,7 +165,7 @@ fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>
     }
 
     let mut mt_iter = memory_types.into_iter().filter(|(_, mt_flags)| {
-        mt_flags.contains(required_flags) && !mt_flags.intersects(disallowed_flags)
+        mt_flags.contains(required_flags)
     });
 
     let first_mt = mt_iter.next();
