@@ -4,12 +4,12 @@
 use super::backends::{
     Class, Constraint, Description, Extent, Flags, Handle, HandlePayload, Layout, Usage,
 };
-use super::types::{Access, Error, Mapping, Result};
+use super::types::{Access, Error, Mapping, Result, Size};
 use super::utils;
 use std::os::fd::OwnedFd;
 
 pub struct Resource {
-    pub layout: Layout,
+    layout: Layout,
     dmabuf: Option<OwnedFd>,
 }
 
@@ -19,6 +19,10 @@ impl Resource {
             layout,
             dmabuf: None,
         }
+    }
+
+    pub fn size(&self) -> Size {
+        self.layout.size
     }
 
     pub fn bind(&mut self, dmabuf: OwnedFd) {
@@ -93,13 +97,35 @@ pub fn with_layout(class: &Class, extent: Extent, layout: Layout) -> Result<Hand
     Ok(handle)
 }
 
-pub fn bind_memory(handle: &mut Handle, dmabuf: OwnedFd) -> Result<()> {
+pub fn layout(handle: &Handle) -> Result<Layout> {
+    let layout = handle.as_ref().layout;
+
+    Ok(layout)
+}
+
+pub fn bind_memory<T>(handle: &mut Handle, dmabuf: Option<OwnedFd>, alloc: T) -> Result<()>
+where
+    T: FnOnce(Size) -> Result<OwnedFd>,
+{
     let res = handle.as_mut();
 
-    let size = utils::seek_end(&dmabuf)?;
-    if res.layout.size > size {
-        return Err(Error::InvalidParam);
+    if res.dmabuf.is_some() {
+        return if dmabuf.is_some() {
+            Err(Error::InvalidParam)
+        } else {
+            Ok(())
+        };
     }
+
+    let dmabuf = if let Some(dmabuf) = dmabuf {
+        let size = utils::seek_end(&dmabuf)?;
+        if res.size() > size {
+            return Err(Error::InvalidParam);
+        }
+        dmabuf
+    } else {
+        alloc(res.size())?
+    };
 
     res.bind(dmabuf);
 
@@ -116,12 +142,6 @@ pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
     let dmabuf = dmabuf.try_clone().map_err(Error::from)?;
 
     Ok(dmabuf)
-}
-
-pub fn layout(handle: &Handle) -> Result<Layout> {
-    let layout = handle.as_ref().layout;
-
-    Ok(layout)
 }
 
 pub fn map(handle: &Handle) -> Result<Mapping> {

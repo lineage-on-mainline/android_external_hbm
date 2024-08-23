@@ -188,6 +188,24 @@ fn get_image(handle: &Handle) -> Result<&sash::Image> {
     Ok(img)
 }
 
+fn get_buffer_mut(handle: &mut Handle) -> Result<&mut sash::Buffer> {
+    let buf = match handle.payload {
+        HandlePayload::Buffer(ref mut buf) => buf,
+        _ => return Err(Error::NoSupport),
+    };
+
+    Ok(buf)
+}
+
+fn get_image_mut(handle: &mut Handle) -> Result<&mut sash::Image> {
+    let img = match handle.payload {
+        HandlePayload::Image(ref mut img) => img,
+        _ => return Err(Error::NoSupport),
+    };
+
+    Ok(img)
+}
+
 pub struct Backend {
     device: Arc<sash::Device>,
 }
@@ -231,14 +249,15 @@ impl super::Backend for Backend {
         Ok(class)
     }
 
-    fn allocate(&self, class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {
+    fn with_constraint(
+        &self,
+        class: &Class,
+        extent: Extent,
+        con: Option<Constraint>,
+    ) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let mut buf =
-                sash::Buffer::with_size(self.device.clone(), buf_info, extent.size(), con)?;
-
-            let mem_info = get_memory_info(class.description, buf.memory_types(None))?;
-            buf.bind_memory(mem_info, None)?;
+            let buf = sash::Buffer::with_size(self.device.clone(), buf_info, extent.size(), con)?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
@@ -261,7 +280,7 @@ impl super::Backend for Backend {
                 }
             }
 
-            let mut img = sash::Image::with_modifiers(
+            let img = sash::Image::with_modifiers(
                 self.device.clone(),
                 img_info,
                 extent.width(),
@@ -270,34 +289,22 @@ impl super::Backend for Backend {
                 con,
             )?;
 
-            let mem_info = get_memory_info(class.description, img.memory_types(None))?;
-            img.bind_memory(mem_info, None)?;
-
             Handle::new(HandlePayload::Image(img))
         };
 
         Ok(handle)
     }
 
-    fn import_dma_buf(
-        &self,
-        class: &Class,
-        extent: Extent,
-        dmabuf: OwnedFd,
-        layout: Layout,
-    ) -> Result<Handle> {
+    fn with_layout(&self, class: &Class, extent: Extent, layout: Layout) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let mut buf =
+            let buf =
                 sash::Buffer::with_layout(self.device.clone(), buf_info, extent.size(), layout)?;
-
-            let mem_info = get_memory_info(class.description, buf.memory_types(Some(&dmabuf)))?;
-            buf.bind_memory(mem_info, Some(dmabuf))?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
             let img_info = get_image_info(class.description, class.usage)?;
-            let mut img = sash::Image::with_layout(
+            let img = sash::Image::with_layout(
                 self.device.clone(),
                 img_info,
                 extent.width(),
@@ -305,13 +312,27 @@ impl super::Backend for Backend {
                 layout,
             )?;
 
-            let mem_info = get_memory_info(class.description, img.memory_types(Some(&dmabuf)))?;
-            img.bind_memory(mem_info, Some(dmabuf))?;
-
             Handle::new(HandlePayload::Image(img))
         };
 
         Ok(handle)
+    }
+
+    fn bind_memory(
+        &self,
+        handle: &mut Handle,
+        class: &Class,
+        dmabuf: Option<OwnedFd>,
+    ) -> Result<()> {
+        if class.description.is_buffer() {
+            let buf = get_buffer_mut(handle)?;
+            let mem_info = get_memory_info(class.description, buf.memory_types(dmabuf.as_ref()))?;
+            buf.bind_memory(mem_info, dmabuf)
+        } else {
+            let img = get_image_mut(handle)?;
+            let mem_info = get_memory_info(class.description, img.memory_types(dmabuf.as_ref()))?;
+            img.bind_memory(mem_info, dmabuf)
+        }
     }
 
     fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {

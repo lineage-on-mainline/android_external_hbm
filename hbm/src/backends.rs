@@ -452,36 +452,36 @@ pub trait Backend: Send + Sync {
         dma_buf::classify(desc, usage)
     }
 
-    fn allocate(
-        &self,
-        _class: &Class,
-        _extent: Extent,
-        _con: Option<Constraint>,
-    ) -> Result<Handle> {
-        Err(Error::NoSupport)
-    }
-
-    fn import_dma_buf(
+    fn with_constraint(
         &self,
         class: &Class,
         extent: Extent,
-        dmabuf: OwnedFd,
-        layout: Layout,
+        con: Option<Constraint>,
     ) -> Result<Handle> {
-        let mut handle = dma_buf::with_layout(class, extent, layout)?;
-        dma_buf::bind_memory(&mut handle, dmabuf)?;
+        dma_buf::with_constraint(class, extent, con)
+    }
 
-        Ok(handle)
+    fn with_layout(&self, class: &Class, extent: Extent, layout: Layout) -> Result<Handle> {
+        dma_buf::with_layout(class, extent, layout)
     }
 
     fn free(&self, _handle: &Handle) {}
 
-    fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
-        dma_buf::export_dma_buf(handle, name)
-    }
-
     fn layout(&self, handle: &Handle) -> Result<Layout> {
         dma_buf::layout(handle)
+    }
+
+    fn bind_memory(
+        &self,
+        _handle: &mut Handle,
+        _class: &Class,
+        _dmabuf: Option<OwnedFd>,
+    ) -> Result<()> {
+        Err(Error::NoSupport)
+    }
+
+    fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
+        dma_buf::export_dma_buf(handle, name)
     }
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {

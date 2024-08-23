@@ -1,7 +1,7 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::{Class, Constraint, Extent, Handle};
+use super::{Class, Handle};
 use crate::dma_buf;
 use crate::types::{Error, Result};
 use crate::utils;
@@ -12,14 +12,14 @@ pub struct Backend {
 }
 
 impl super::Backend for Backend {
-    fn allocate(&self, class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {
-        let mut handle = dma_buf::with_constraint(class, extent, con)?;
-
-        let res = handle.as_mut();
-        let dmabuf = utils::dma_heap_alloc(&self.fd, res.layout.size)?;
-        res.bind(dmabuf);
-
-        Ok(handle)
+    fn bind_memory(
+        &self,
+        handle: &mut Handle,
+        _class: &Class,
+        dmabuf: Option<OwnedFd>,
+    ) -> Result<()> {
+        let alloc = |size| utils::dma_heap_alloc(&self.fd, size);
+        dma_buf::bind_memory(handle, dmabuf, alloc)
     }
 }
 

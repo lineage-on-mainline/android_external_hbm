@@ -47,7 +47,10 @@ impl Bo {
         };
 
         let backend = &device.backends[class.backend_index];
-        let handle = backend.allocate(class, extent, con)?;
+
+        let mut handle = backend.with_constraint(class, extent, con)?;
+        backend.bind_memory(&mut handle, class, None)?;
+
         let bo = Self::with_handle(device, class, handle);
 
         Ok(bo)
@@ -65,7 +68,10 @@ impl Bo {
         }
 
         let backend = &device.backends[class.backend_index];
-        let handle = backend.import_dma_buf(class, extent, dmabuf, layout)?;
+
+        let mut handle = backend.with_layout(class, extent, layout)?;
+        backend.bind_memory(&mut handle, class, Some(dmabuf))?;
+
         let bo = Self::with_handle(device, class, handle);
 
         Ok(bo)

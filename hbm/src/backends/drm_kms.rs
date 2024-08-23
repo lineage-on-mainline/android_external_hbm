@@ -241,7 +241,12 @@ impl super::Backend for Backend {
         Ok(class)
     }
 
-    fn allocate(&self, class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Handle> {
+    fn with_constraint(
+        &self,
+        class: &Class,
+        extent: Extent,
+        con: Option<Constraint>,
+    ) -> Result<Handle> {
         let desc = &class.description;
 
         assert!(!desc.is_buffer());
@@ -272,6 +277,16 @@ impl super::Backend for Backend {
         res.bind(dmabuf);
 
         Ok(handle)
+    }
+
+    fn bind_memory(
+        &self,
+        handle: &mut Handle,
+        _class: &Class,
+        dmabuf: Option<OwnedFd>,
+    ) -> Result<()> {
+        let alloc = |_| Err(Error::InvalidParam);
+        dma_buf::bind_memory::<_>(handle, dmabuf, alloc)
     }
 }
 
