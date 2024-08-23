@@ -15,22 +15,19 @@ use std::os::fd::OwnedFd;
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct Flags: u32 {
+    pub struct ResourceFlags: u32 {
         const MAP = 1 << 0;
         const COPY = 1 << 1;
-        const COHERENT = 1 << 2;
-        const NO_CACHE = 1 << 3;
-        const NO_COMPRESSION = 1 << 4;
-        const SCANOUT = 1 << 5;
-        const PROTECTED = 1 << 6;
-        const PRIORITY_HIGH = 1 << 7;
+        const PROTECTED = 1 << 2;
+        const NO_COMPRESSION = 1 << 3;
+        const SCANOUT = 1 << 4;
     }
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct Description {
-    pub flags: Flags,
+    pub flags: ResourceFlags,
     pub format: Format,
     pub modifier: Modifier,
 }
@@ -40,7 +37,7 @@ impl Description {
         Default::default()
     }
 
-    pub fn flags(mut self, flags: Flags) -> Self {
+    pub fn flags(mut self, flags: ResourceFlags) -> Self {
         self.flags = flags;
         self
     }
@@ -424,6 +421,24 @@ impl Handle {
     }
 }
 
+bitflags::bitflags! {
+    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    pub struct MemoryFlags: u32 {
+        const SYSTEM = 1 << 0;
+        const MAPPABLE = 1 << 1;
+        const COHERENT = 1 << 2;
+        const CACHED = 1 << 3;
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default)]
+pub enum MemoryPriority {
+    #[default]
+    Medium,
+    Low,
+    High,
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct CopyBuffer {
     pub src_offset: Size,
@@ -471,10 +486,15 @@ pub trait Backend: Send + Sync {
         dma_buf::layout(handle)
     }
 
+    fn memory_types(&self, handle: &Handle, dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+        dma_buf::memory_types(handle, dmabuf)
+    }
+
     fn bind_memory(
         &self,
         _handle: &mut Handle,
-        _class: &Class,
+        _flags: MemoryFlags,
+        _priority: MemoryPriority,
         _dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         Err(Error::NoSupport)

@@ -1,11 +1,11 @@
 use drm_fourcc::DrmFourcc;
-use hbm::{Flags, Format, Usage};
+use hbm::{Format, MemoryFlags, MemoryPriority, ResourceFlags, Usage};
 use std::slice;
 use std::sync::Arc;
 
 fn test_image(dev: Arc<hbm::Device>) {
     let img_desc = hbm::Description::new()
-        .flags(Flags::MAP | Flags::COPY)
+        .flags(ResourceFlags::MAP | ResourceFlags::COPY)
         .format(Format::new(DrmFourcc::Argb8888 as u32));
     let img_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let img_class = dev.classify(img_desc, slice::from_ref(&img_usage)).unwrap();
@@ -19,7 +19,9 @@ fn test_image(dev: Arc<hbm::Device>) {
         None,
     )
     .unwrap();
-    img_bo.bind_memory(&img_class, None).unwrap();
+    img_bo
+        .bind_memory(MemoryFlags::MAPPABLE, MemoryPriority::Medium, None)
+        .unwrap();
 
     let img_dmabuf = img_bo.export_dma_buf(Some("img")).unwrap();
     let img_layout = img_bo.layout().unwrap();
@@ -41,7 +43,13 @@ fn test_image(dev: Arc<hbm::Device>) {
         img_layout,
     )
     .unwrap();
-    img_bo2.bind_memory(&img_class, Some(img_dmabuf)).unwrap();
+    img_bo2
+        .bind_memory(
+            MemoryFlags::MAPPABLE,
+            MemoryPriority::Medium,
+            Some(img_dmabuf),
+        )
+        .unwrap();
 
     img_bo.map().unwrap();
     img_bo.flush().unwrap();
@@ -58,14 +66,16 @@ fn test_image(dev: Arc<hbm::Device>) {
         height: img_height,
     };
 
-    let buf_desc = hbm::Description::new().flags(Flags::MAP | Flags::COPY);
+    let buf_desc = hbm::Description::new().flags(ResourceFlags::MAP | ResourceFlags::COPY);
     let buf_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let buf_class = dev.classify(buf_desc, slice::from_ref(&buf_usage)).unwrap();
     let buf_size = (img_width * img_height * 4) as u64;
     let mut buf_bo =
         hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
             .unwrap();
-    buf_bo.bind_memory(&buf_class, None).unwrap();
+    buf_bo
+        .bind_memory(MemoryFlags::MAPPABLE, MemoryPriority::Medium, None)
+        .unwrap();
 
     buf_bo
         .copy_buffer_image(&img_bo, img_copy, None, true)
@@ -76,7 +86,7 @@ fn test_image(dev: Arc<hbm::Device>) {
 }
 
 fn test_buffer(dev: Arc<hbm::Device>) {
-    let buf_desc = hbm::Description::new().flags(Flags::MAP | Flags::COPY);
+    let buf_desc = hbm::Description::new().flags(ResourceFlags::MAP | ResourceFlags::COPY);
     let buf_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let buf_class = dev.classify(buf_desc, slice::from_ref(&buf_usage)).unwrap();
 
@@ -84,7 +94,9 @@ fn test_buffer(dev: Arc<hbm::Device>) {
     let mut buf_bo =
         hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
             .unwrap();
-    buf_bo.bind_memory(&buf_class, None).unwrap();
+    buf_bo
+        .bind_memory(MemoryFlags::MAPPABLE, MemoryPriority::Medium, None)
+        .unwrap();
 
     let buf_dmabuf = buf_bo.export_dma_buf(Some("buf")).unwrap();
     let buf_layout = buf_bo.layout().unwrap();
@@ -97,7 +109,13 @@ fn test_buffer(dev: Arc<hbm::Device>) {
         buf_layout,
     )
     .unwrap();
-    buf_bo2.bind_memory(&buf_class, Some(buf_dmabuf)).unwrap();
+    buf_bo2
+        .bind_memory(
+            MemoryFlags::MAPPABLE,
+            MemoryPriority::Medium,
+            Some(buf_dmabuf),
+        )
+        .unwrap();
 
     buf_bo.map().unwrap();
     buf_bo.flush().unwrap();
@@ -112,7 +130,9 @@ fn test_buffer(dev: Arc<hbm::Device>) {
     let mut buf_src =
         hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
             .unwrap();
-    buf_src.bind_memory(&buf_class, None).unwrap();
+    buf_src
+        .bind_memory(MemoryFlags::MAPPABLE, MemoryPriority::Medium, None)
+        .unwrap();
 
     buf_bo.copy_buffer(&buf_src, buf_copy, None, true).unwrap();
 }

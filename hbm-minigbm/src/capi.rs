@@ -10,16 +10,17 @@ use std::{ffi, ptr, slice};
 pub const HBM_FLAG_MAP: u32 = 1 << 0;
 /// The BO can be copied to or copied from.
 pub const HBM_FLAG_COPY: u32 = 1 << 1;
-/// Prefers a coherent mapping.
-pub const HBM_FLAG_COHERENT: u32 = 1 << 2;
-/// Prefers a non-cached mapping.
-pub const HBM_FLAG_NO_CACHE: u32 = 1 << 3;
-/// The BO must not be compressed.
-pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 4;
-/// The BO can be scanned out.
-pub const HBM_FLAG_SCANOUT: u32 = 1 << 5;
 /// The BO must be allocated from a protected heap.
-pub const HBM_FLAG_PROTECTED: u32 = 1 << 6;
+pub const HBM_FLAG_PROTECTED: u32 = 1 << 2;
+/// The BO must not be compressed.
+pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 3;
+/// The BO can be scanned out.
+pub const HBM_FLAG_SCANOUT: u32 = 1 << 4;
+
+/// Prefers a coherent mapping.
+pub const HBM_FLAG_COHERENT: u32 = 1 << 5;
+/// Prefers a non-cached mapping.
+pub const HBM_FLAG_NO_CACHE: u32 = 1 << 6;
 
 /// The BO can be used for GPU copies.
 pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
@@ -86,27 +87,21 @@ impl CDevice {
     }
 
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
-        let mut flags = hbm::Flags::empty();
+        let mut flags = hbm::ResourceFlags::empty();
         if (desc.flags & HBM_FLAG_MAP) > 0 {
-            flags |= hbm::Flags::MAP;
+            flags |= hbm::ResourceFlags::MAP;
         }
         if (desc.flags & HBM_FLAG_COPY) > 0 {
-            flags |= hbm::Flags::COPY;
-        }
-        if (desc.flags & HBM_FLAG_COHERENT) > 0 {
-            flags |= hbm::Flags::COHERENT;
-        }
-        if (desc.flags & HBM_FLAG_NO_CACHE) > 0 {
-            flags |= hbm::Flags::NO_CACHE;
-        }
-        if (desc.flags & HBM_FLAG_NO_COMPRESSION) > 0 {
-            flags |= hbm::Flags::NO_COMPRESSION;
-        }
-        if (desc.flags & HBM_FLAG_SCANOUT) > 0 {
-            flags |= hbm::Flags::SCANOUT;
+            flags |= hbm::ResourceFlags::COPY;
         }
         if (desc.flags & HBM_FLAG_PROTECTED) > 0 {
-            flags |= hbm::Flags::PROTECTED;
+            flags |= hbm::ResourceFlags::PROTECTED;
+        }
+        if (desc.flags & HBM_FLAG_NO_COMPRESSION) > 0 {
+            flags |= hbm::ResourceFlags::NO_COMPRESSION;
+        }
+        if (desc.flags & HBM_FLAG_SCANOUT) > 0 {
+            flags |= hbm::ResourceFlags::SCANOUT;
         }
 
         let mut vk_usage = hbm::vulkan::Usage::empty();
@@ -605,7 +600,19 @@ pub unsafe extern "C" fn hbm_bo_create(
         _ => return ptr::null_mut(),
     };
 
-    if bo.bind_memory(class, None).is_err() {
+    let mut flags = hbm::MemoryFlags::empty();
+    if (desc.flags & HBM_FLAG_MAP) > 0 {
+        flags |= hbm::MemoryFlags::MAPPABLE;
+        if (desc.flags & HBM_FLAG_COHERENT) > 0 {
+            flags |= hbm::MemoryFlags::COHERENT;
+        }
+        if (desc.flags & HBM_FLAG_NO_CACHE) == 0 {
+            flags |= hbm::MemoryFlags::CACHED;
+        }
+    }
+    let priority = hbm::MemoryPriority::Medium;
+
+    if bo.bind_memory(flags, priority, None).is_err() {
         return ptr::null_mut();
     }
 
@@ -646,7 +653,19 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
         _ => return ptr::null_mut(),
     };
 
-    if bo.bind_memory(class, Some(dmabuf)).is_err() {
+    let mut flags = hbm::MemoryFlags::empty();
+    if (desc.flags & HBM_FLAG_MAP) > 0 {
+        flags |= hbm::MemoryFlags::MAPPABLE;
+        if (desc.flags & HBM_FLAG_COHERENT) > 0 {
+            flags |= hbm::MemoryFlags::COHERENT;
+        }
+        if (desc.flags & HBM_FLAG_NO_CACHE) == 0 {
+            flags |= hbm::MemoryFlags::CACHED;
+        }
+    }
+    let priority = hbm::MemoryPriority::Medium;
+
+    if bo.bind_memory(flags, priority, Some(dmabuf)).is_err() {
         return ptr::null_mut();
     }
 

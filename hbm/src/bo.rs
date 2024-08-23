@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{
-    Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Flags, Handle, Layout,
+    Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Handle, Layout, MemoryFlags,
+    MemoryPriority, ResourceFlags,
 };
 use super::device::Device;
 use super::types::{Access, Error, Mapping, Result};
@@ -72,7 +73,7 @@ impl Bo {
 
     fn with_handle(device: Arc<Device>, class: &Class, mut handle: Handle) -> Self {
         let is_buffer = class.description.is_buffer();
-        let mappable = class.description.flags.contains(Flags::MAP);
+        let mappable = class.description.flags.contains(ResourceFlags::MAP);
 
         handle.backend_index = class.backend_index;
 
@@ -96,10 +97,19 @@ impl Bo {
         self.backend().layout(&self.handle)
     }
 
-    pub fn bind_memory(&mut self, class: &Class, dmabuf: Option<OwnedFd>) -> Result<()> {
+    pub fn memory_types(&self, dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+        self.backend().memory_types(&self.handle, dmabuf)
+    }
+
+    pub fn bind_memory(
+        &mut self,
+        flags: MemoryFlags,
+        priority: MemoryPriority,
+        dmabuf: Option<OwnedFd>,
+    ) -> Result<()> {
         let backend = self.device.backend(self.handle.backend_index);
         let handle = &mut self.handle;
-        backend.bind_memory(handle, class, dmabuf)
+        backend.bind_memory(handle, flags, priority, dmabuf)
     }
 
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {

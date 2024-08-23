@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{
-    Class, Constraint, Description, Extent, Flags, Handle, HandlePayload, Layout, Usage,
+    Class, Constraint, Description, Extent, Handle, HandlePayload, Layout, MemoryFlags,
+    MemoryPriority, ResourceFlags, Usage,
 };
 use super::types::{Access, Error, Mapping, Result, Size};
 use super::utils;
@@ -63,7 +64,7 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
         return Err(Error::NoSupport);
     }
 
-    let unsupported_flags = Flags::COHERENT | Flags::PROTECTED;
+    let unsupported_flags = ResourceFlags::PROTECTED;
     if desc.flags.intersects(unsupported_flags) {
         return Err(Error::NoSupport);
     }
@@ -103,11 +104,25 @@ pub fn layout(handle: &Handle) -> Result<Layout> {
     Ok(layout)
 }
 
-pub fn bind_memory<T>(handle: &mut Handle, dmabuf: Option<OwnedFd>, alloc: T) -> Result<()>
+pub fn memory_types(_handle: &Handle, _dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+    vec![MemoryFlags::MAPPABLE]
+}
+
+pub fn bind_memory<T>(
+    handle: &mut Handle,
+    flags: MemoryFlags,
+    _priority: MemoryPriority,
+    dmabuf: Option<OwnedFd>,
+    alloc: T,
+) -> Result<()>
 where
     T: FnOnce(Size) -> Result<OwnedFd>,
 {
     let res = handle.as_mut();
+
+    if !MemoryFlags::MAPPABLE.contains(flags) {
+        return Err(Error::InvalidParam);
+    }
 
     if res.dmabuf.is_some() {
         return if dmabuf.is_some() {
