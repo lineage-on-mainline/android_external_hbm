@@ -1,7 +1,8 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::{Class, Constraint, Description, Extent, Handle, Layout};
+use super::{Class, Constraint, Description, Extent, Handle, HandlePayload, Layout};
+use crate::dma_buf;
 use crate::formats;
 use crate::types::{Error, Format, Modifier, Result, Size};
 use crate::utils;
@@ -265,7 +266,8 @@ impl super::Backend for Backend {
         if !layout.fit(con) {
             return Err(Error::NoSupport);
         }
-        let handle = Handle::with_dma_buf(dmabuf, layout);
+        let payload = dma_buf::Payload::new(layout, dmabuf);
+        let handle = Handle::new(HandlePayload::DmaBuf(payload));
 
         Ok(handle)
     }

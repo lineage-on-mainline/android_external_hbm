@@ -1,7 +1,8 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::{Class, Constraint, Extent, Handle, Layout};
+use super::{Class, Constraint, Extent, Handle, HandlePayload, Layout};
+use crate::dma_buf;
 use crate::types::{Error, Result};
 use crate::utils;
 use std::os::fd::OwnedFd;
@@ -15,7 +16,8 @@ impl super::Backend for Backend {
         let layout = Layout::packed(class, extent, con)?;
         let memfd = utils::memfd_create("udmabuf", layout.size)?;
         let dmabuf = utils::udmabuf_alloc(&self.fd, memfd, layout.size)?;
-        let handle = Handle::with_dma_buf(dmabuf, layout);
+        let payload = dma_buf::Payload::new(layout, dmabuf);
+        let handle = Handle::new(HandlePayload::DmaBuf(payload));
 
         Ok(handle)
     }

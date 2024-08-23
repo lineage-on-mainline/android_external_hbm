@@ -403,7 +403,7 @@ impl Layout {
 }
 
 pub(crate) enum HandlePayload {
-    DmaBuf((OwnedFd, Layout)),
+    DmaBuf(dma_buf::Payload),
     Buffer(sash::Buffer),
     Image(sash::Image),
 }
@@ -421,10 +421,6 @@ impl Handle {
             payload,
             backend_index: 0,
         }
-    }
-
-    pub(crate) fn with_dma_buf(dmabuf: OwnedFd, layout: Layout) -> Self {
-        Self::new(HandlePayload::DmaBuf((dmabuf, layout)))
     }
 }
 
