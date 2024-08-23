@@ -20,6 +20,28 @@ die(const char *msg)
 }
 
 static void
+test_memory_types(struct hbm_bo *bo, int dmabuf)
+{
+    uint32_t mt_count = hbm_bo_memory_types(bo, dmabuf, 0, NULL);
+    uint32_t *mt_flags = malloc(sizeof(*mt_flags) * mt_count);
+    if (!mt_flags)
+        die("failed to alloc mt flags");
+    mt_count = hbm_bo_memory_types(bo, dmabuf, mt_count, mt_flags);
+
+    bool has_mappable = false;
+    for (uint32_t i = 0; i < mt_count; i++) {
+        if (mt_flags[i] & HBM_MEMORY_FLAG_MAPPABLE) {
+            has_mappable = true;
+            break;
+        }
+    }
+    if (!has_mappable)
+        die("failed mappable mt");
+
+    free(mt_flags);
+}
+
+static void
 test_image_copy(struct hbm_bo *img_bo, struct hbm_bo *buf_bo, uint32_t width, uint32_t height)
 {
     const struct hbm_copy_buffer_image copy = {
@@ -132,6 +154,7 @@ test_image(struct hbm_device *dev)
     struct hbm_bo *img_bo = hbm_bo_create_with_constraint(dev, &img_desc, &img_extent, NULL);
     if (!img_bo)
         die("failed to create image bo");
+    test_memory_types(img_bo, -1);
     if (!hbm_bo_bind_memory(img_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
         die("failed to bind image bo");
 
@@ -151,6 +174,7 @@ test_image(struct hbm_device *dev)
     img_bo = hbm_bo_create_with_layout(dev, &img_desc, &img_extent, &img_layout);
     if (!img_bo)
         die("failed to create image bo with layout");
+    test_memory_types(img_bo, img_dmabuf);
     if (!hbm_bo_bind_memory(img_bo, HBM_MEMORY_FLAG_MAPPABLE, img_dmabuf))
         die("failed to import image dma-buf");
 
@@ -169,10 +193,11 @@ test_image(struct hbm_device *dev)
             },
         };
         struct hbm_bo *tmp_bo = hbm_bo_create_with_constraint(dev, &tmp_desc, &tmp_extent, NULL);
-	if (!tmp_bo)
-		die("failed to create temp bo");
-	if (!hbm_bo_bind_memory(tmp_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
-		die("failed to bind temp bo");
+        if (!tmp_bo)
+            die("failed to create temp bo");
+        test_memory_types(tmp_bo, -1);
+        if (!hbm_bo_bind_memory(tmp_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
+            die("failed to bind temp bo");
 
         test_image_copy(img_bo, tmp_bo, img_extent.image.width, img_extent.image.height);
         hbm_bo_destroy(tmp_bo);
@@ -250,6 +275,7 @@ test_buffer(struct hbm_device *dev)
     struct hbm_bo *buf_bo = hbm_bo_create_with_constraint(dev, &buf_desc, &buf_extent, NULL);
     if (!buf_bo)
         die("failed to create buffer bo");
+    test_memory_types(buf_bo, -1);
     if (!hbm_bo_bind_memory(buf_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
         die("failed to bind buffer bo");
 
@@ -268,6 +294,7 @@ test_buffer(struct hbm_device *dev)
     buf_bo = hbm_bo_create_with_layout(dev, &buf_desc, &buf_extent, &buf_layout);
     if (!buf_bo)
         die("failed to create buffer bo with layout");
+    test_memory_types(buf_bo, buf_dmabuf);
     if (!hbm_bo_bind_memory(buf_bo, HBM_MEMORY_FLAG_MAPPABLE, buf_dmabuf))
         die("failed to import buffer dma-buf");
 
@@ -275,10 +302,11 @@ test_buffer(struct hbm_device *dev)
 
     {
         struct hbm_bo *tmp_bo = hbm_bo_create_with_constraint(dev, &buf_desc, &buf_extent, NULL);
-	if (!tmp_bo)
-		die("failed to create temp bo");
-	if (!hbm_bo_bind_memory(tmp_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
-		die("failed to bind temp bo");
+        if (!tmp_bo)
+            die("failed to create temp bo");
+        test_memory_types(tmp_bo, -1);
+        if (!hbm_bo_bind_memory(tmp_bo, HBM_MEMORY_FLAG_MAPPABLE, -1))
+            die("failed to bind temp bo");
 
         test_buffer_copy(buf_bo, tmp_bo, buf_extent.buffer.size);
         hbm_bo_destroy(tmp_bo);

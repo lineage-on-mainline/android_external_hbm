@@ -164,9 +164,9 @@ fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>
         }
     }
 
-    let mut mt_iter = memory_types.into_iter().filter(|(_, mt_flags)| {
-        mt_flags.contains(required_flags)
-    });
+    let mut mt_iter = memory_types
+        .into_iter()
+        .filter(|(_, mt_flags)| mt_flags.contains(required_flags));
 
     let first_mt = mt_iter.next();
     if first_mt.is_none() {
