@@ -3,7 +3,7 @@
 
 use super::backends::{
     Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Handle, Layout, MemoryFlags,
-    MemoryPriority, ResourceFlags,
+    ResourceFlags,
 };
 use super::device::Device;
 use super::types::{Access, Error, Mapping, Result};
@@ -101,15 +101,10 @@ impl Bo {
         self.backend().memory_types(&self.handle, dmabuf)
     }
 
-    pub fn bind_memory(
-        &mut self,
-        flags: MemoryFlags,
-        priority: MemoryPriority,
-        dmabuf: Option<OwnedFd>,
-    ) -> Result<()> {
+    pub fn bind_memory(&mut self, flags: MemoryFlags, dmabuf: Option<OwnedFd>) -> Result<()> {
         let backend = self.device.backend(self.handle.backend_index);
         let handle = &mut self.handle;
-        backend.bind_memory(handle, flags, priority, dmabuf)
+        backend.bind_memory(handle, flags, dmabuf)
     }
 
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {

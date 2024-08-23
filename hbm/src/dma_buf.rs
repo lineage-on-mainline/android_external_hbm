@@ -3,7 +3,7 @@
 
 use super::backends::{
     Class, Constraint, Description, Extent, Handle, HandlePayload, Layout, MemoryFlags,
-    MemoryPriority, ResourceFlags, Usage,
+    ResourceFlags, Usage,
 };
 use super::types::{Access, Error, Mapping, Result, Size};
 use super::utils;
@@ -111,7 +111,6 @@ pub fn memory_types(_handle: &Handle, _dmabuf: Option<&OwnedFd>) -> Vec<MemoryFl
 pub fn bind_memory<T>(
     handle: &mut Handle,
     flags: MemoryFlags,
-    _priority: MemoryPriority,
     dmabuf: Option<OwnedFd>,
     alloc: T,
 ) -> Result<()>

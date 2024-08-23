@@ -431,14 +431,6 @@ bitflags::bitflags! {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub enum MemoryPriority {
-    #[default]
-    Medium,
-    Low,
-    High,
-}
-
 #[derive(Clone, Copy, Debug)]
 pub struct CopyBuffer {
     pub src_offset: Size,
@@ -494,7 +486,6 @@ pub trait Backend: Send + Sync {
         &self,
         _handle: &mut Handle,
         _flags: MemoryFlags,
-        _priority: MemoryPriority,
         _dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         Err(Error::NoSupport)

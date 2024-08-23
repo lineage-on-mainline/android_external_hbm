@@ -1,5 +1,5 @@
 use drm_fourcc::{DrmFourcc, DrmModifier};
-use hbm::{Format, MemoryFlags, MemoryPriority, ResourceFlags, Usage};
+use hbm::{Format, MemoryFlags, ResourceFlags, Usage};
 use std::slice;
 
 #[cfg(feature = "drm")]
@@ -28,8 +28,7 @@ fn main() {
         None,
     )
     .unwrap();
-    bo.bind_memory(MemoryFlags::MAPPABLE, MemoryPriority::Medium, None)
-        .unwrap();
+    bo.bind_memory(MemoryFlags::MAPPABLE, None).unwrap();
 
     let dmabuf = bo.export_dma_buf(Some("test")).unwrap();
     let layout = bo.layout().unwrap();
@@ -51,7 +50,7 @@ fn main() {
         layout,
     )
     .unwrap();
-    bo2.bind_memory(MemoryFlags::MAPPABLE, MemoryPriority::Medium, Some(dmabuf))
+    bo2.bind_memory(MemoryFlags::MAPPABLE, Some(dmabuf))
         .unwrap();
 
     bo.map().unwrap();

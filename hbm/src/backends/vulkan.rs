@@ -3,7 +3,7 @@
 
 use super::{
     Class, Constraint, CopyBuffer, CopyBufferImage, Description, Extent, Handle, HandlePayload,
-    Layout, MemoryFlags, MemoryPriority, ResourceFlags,
+    Layout, MemoryFlags, ResourceFlags,
 };
 use crate::formats;
 use crate::sash;
@@ -146,7 +146,6 @@ fn get_memory_flags(memory_types: Vec<(u32, vk::MemoryPropertyFlags)>) -> Vec<Me
 
 fn get_memory_info(
     flags: MemoryFlags,
-    priority: MemoryPriority,
     memory_types: Vec<(u32, vk::MemoryPropertyFlags)>,
 ) -> Result<sash::MemoryInfo> {
     let known_mt_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL
@@ -181,12 +180,7 @@ fn get_memory_info(
     }
     let best_mt = mt_iter.find(|(_, mt_flags)| (*mt_flags & known_mt_flags) == required_flags);
     let mt_index = best_mt.or(first_mt).unwrap().0;
-
-    let priority = match priority {
-        MemoryPriority::Medium => 0.5,
-        MemoryPriority::Low => 0.25,
-        MemoryPriority::High => 0.75,
-    };
+    let priority = 0.5;
 
     let mem_info = sash::MemoryInfo { mt_index, priority };
 
@@ -347,16 +341,15 @@ impl super::Backend for Backend {
         &self,
         handle: &mut Handle,
         flags: MemoryFlags,
-        priority: MemoryPriority,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         match handle.payload {
             HandlePayload::Buffer(ref mut buf) => {
-                let mem_info = get_memory_info(flags, priority, buf.memory_types(dmabuf.as_ref()))?;
+                let mem_info = get_memory_info(flags, buf.memory_types(dmabuf.as_ref()))?;
                 buf.bind_memory(mem_info, dmabuf)
             }
             HandlePayload::Image(ref mut img) => {
-                let mem_info = get_memory_info(flags, priority, img.memory_types(dmabuf.as_ref()))?;
+                let mem_info = get_memory_info(flags, img.memory_types(dmabuf.as_ref()))?;
                 img.bind_memory(mem_info, dmabuf)
             }
             _ => Err(Error::NoSupport),

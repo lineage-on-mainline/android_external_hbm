@@ -610,9 +610,8 @@ pub unsafe extern "C" fn hbm_bo_create(
             flags |= hbm::MemoryFlags::CACHED;
         }
     }
-    let priority = hbm::MemoryPriority::Medium;
 
-    if bo.bind_memory(flags, priority, None).is_err() {
+    if bo.bind_memory(flags, None).is_err() {
         return ptr::null_mut();
     }
 
@@ -663,9 +662,8 @@ pub unsafe extern "C" fn hbm_bo_import_dma_buf(
             flags |= hbm::MemoryFlags::CACHED;
         }
     }
-    let priority = hbm::MemoryPriority::Medium;
 
-    if bo.bind_memory(flags, priority, Some(dmabuf)).is_err() {
+    if bo.bind_memory(flags, Some(dmabuf)).is_err() {
         return ptr::null_mut();
     }
 

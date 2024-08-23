@@ -1,7 +1,7 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::{Class, Constraint, Description, Extent, Handle, Layout, MemoryFlags, MemoryPriority};
+use super::{Class, Constraint, Description, Extent, Handle, Layout, MemoryFlags};
 use crate::dma_buf;
 use crate::formats;
 use crate::types::{Error, Format, Modifier, Result, Size};
@@ -283,11 +283,10 @@ impl super::Backend for Backend {
         &self,
         handle: &mut Handle,
         flags: MemoryFlags,
-        priority: MemoryPriority,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         let alloc = |_| Err(Error::InvalidParam);
-        dma_buf::bind_memory::<_>(handle, flags, priority, dmabuf, alloc)
+        dma_buf::bind_memory::<_>(handle, flags, dmabuf, alloc)
     }
 }
 
