@@ -7,7 +7,7 @@ use super::backends::{
 };
 use super::types::{Access, Error, Mapping, Result, Size};
 use super::utils;
-use std::os::fd::OwnedFd;
+use std::os::fd::{BorrowedFd, OwnedFd};
 
 pub struct Resource {
     layout: Layout,
@@ -104,7 +104,7 @@ pub fn layout(handle: &Handle) -> Result<Layout> {
     Ok(layout)
 }
 
-pub fn memory_types(_handle: &Handle, _dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+pub fn memory_types(_handle: &Handle, _dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
     vec![MemoryFlags::MAPPABLE]
 }
 

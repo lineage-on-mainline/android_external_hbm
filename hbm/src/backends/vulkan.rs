@@ -11,7 +11,7 @@ use crate::types::{Access, Error, Format, Mapping, Modifier, Result};
 use crate::utils;
 use ash::vk;
 use log::info;
-use std::os::fd::OwnedFd;
+use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
 use std::sync::Arc;
 
 bitflags::bitflags! {
@@ -318,7 +318,7 @@ impl super::Backend for Backend {
         Ok(handle)
     }
 
-    fn memory_types(&self, handle: &Handle, dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+    fn memory_types(&self, handle: &Handle, dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
         let memory_types = match handle.payload {
             HandlePayload::Buffer(ref buf) => buf.memory_types(dmabuf),
             HandlePayload::Image(ref img) => img.memory_types(dmabuf),
@@ -336,11 +336,13 @@ impl super::Backend for Backend {
     ) -> Result<()> {
         match handle.payload {
             HandlePayload::Buffer(ref mut buf) => {
-                let mt_idx = find_mt(flags, buf.memory_types(dmabuf.as_ref()))?;
+                let memory_types = buf.memory_types(dmabuf.as_ref().map(AsFd::as_fd));
+                let mt_idx = find_mt(flags, memory_types)?;
                 buf.bind_memory(mt_idx, dmabuf)
             }
             HandlePayload::Image(ref mut img) => {
-                let mt_idx = find_mt(flags, img.memory_types(dmabuf.as_ref()))?;
+                let memory_types = img.memory_types(dmabuf.as_ref().map(AsFd::as_fd));
+                let mt_idx = find_mt(flags, memory_types)?;
                 img.bind_memory(mt_idx, dmabuf)
             }
             _ => Err(Error::NoSupport),

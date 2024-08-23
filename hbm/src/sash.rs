@@ -8,7 +8,7 @@ use super::utils;
 use ash::vk;
 use log::{debug, warn};
 use std::collections::HashMap;
-use std::os::fd::{AsRawFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
+use std::os::fd::{AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
 use std::{cmp, ffi, num, ptr, slice, thread};
 
@@ -1023,7 +1023,7 @@ impl Device {
         Ok(props)
     }
 
-    fn get_dma_buf_mt_mask(&self, dmabuf: &OwnedFd) -> u32 {
+    fn get_dma_buf_mt_mask(&self, dmabuf: BorrowedFd) -> u32 {
         // ignore self.properties().external_memory_type
         let external_memory_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
 
@@ -1717,7 +1717,7 @@ impl Buffer {
         Ok(layout)
     }
 
-    pub fn memory_types(&self, dmabuf: Option<&OwnedFd>) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+    pub fn memory_types(&self, dmabuf: Option<BorrowedFd>) -> Vec<(u32, vk::MemoryPropertyFlags)> {
         let mt_mask = dmabuf.map_or(u32::MAX, |dmabuf| self.device.get_dma_buf_mt_mask(dmabuf));
         self.device.memory_types(self.mt_mask & mt_mask)
     }
@@ -1982,7 +1982,7 @@ impl Image {
         Ok(layout.size(self.size))
     }
 
-    pub fn memory_types(&self, dmabuf: Option<&OwnedFd>) -> Vec<(u32, vk::MemoryPropertyFlags)> {
+    pub fn memory_types(&self, dmabuf: Option<BorrowedFd>) -> Vec<(u32, vk::MemoryPropertyFlags)> {
         let mt_mask = dmabuf.map_or(u32::MAX, |dmabuf| self.device.get_dma_buf_mt_mask(dmabuf));
         self.device.memory_types(self.mt_mask & mt_mask)
     }

@@ -11,7 +11,7 @@ use super::dma_buf;
 use super::formats;
 use super::sash;
 use super::types::{Error, Format, Mapping, Modifier, Result, Size};
-use std::os::fd::OwnedFd;
+use std::os::fd::{BorrowedFd, OwnedFd};
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
@@ -478,7 +478,7 @@ pub trait Backend: Send + Sync {
         dma_buf::layout(handle)
     }
 
-    fn memory_types(&self, handle: &Handle, dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+    fn memory_types(&self, handle: &Handle, dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
         dma_buf::memory_types(handle, dmabuf)
     }
 

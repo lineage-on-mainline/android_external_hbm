@@ -8,7 +8,7 @@ use super::backends::{
 use super::device::Device;
 use super::types::{Access, Error, Mapping, Result};
 use super::utils;
-use std::os::fd::OwnedFd;
+use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::{Arc, Mutex};
 
 struct MappingState {
@@ -97,7 +97,7 @@ impl Bo {
         self.backend().layout(&self.handle)
     }
 
-    pub fn memory_types(&self, dmabuf: Option<&OwnedFd>) -> Vec<MemoryFlags> {
+    pub fn memory_types(&self, dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
         self.backend().memory_types(&self.handle, dmabuf)
     }
 
