@@ -24,7 +24,6 @@ enum ExtId {
     ExtExternalMemoryDmaBuf,
     ExtImageCompressionControl,
     ExtImageDrmFormatModifier,
-    ExtMemoryPriority,
     ExtPhysicalDeviceDrm,
     ExtQueueFamilyForeign,
     Count,
@@ -39,7 +38,6 @@ const EXT_TABLE: [(ExtId, &ffi::CStr, bool); ExtId::Count as usize] = [
     (ExtId::ExtExternalMemoryDmaBuf,    ash::ext::external_memory_dma_buf::NAME,    true),
     (ExtId::ExtImageCompressionControl, ash::ext::image_compression_control::NAME,  false),
     (ExtId::ExtImageDrmFormatModifier,  ash::ext::image_drm_format_modifier::NAME,  false),
-    (ExtId::ExtMemoryPriority,          ash::ext::memory_priority::NAME,            false),
     (ExtId::ExtPhysicalDeviceDrm,       ash::ext::physical_device_drm::NAME,        false),
     (ExtId::ExtQueueFamilyForeign,      ash::ext::queue_family_foreign::NAME,       true),
 ];
@@ -245,7 +243,6 @@ struct PhysicalDeviceProperties {
     max_buffer_size: Size,
 
     protected_memory: bool,
-    memory_priority: bool,
     image_compression_control: bool,
 
     queue_family: u32,
@@ -420,11 +417,9 @@ impl PhysicalDevice {
 
     fn probe_features(&mut self) -> Result<()> {
         let mut mem_prot_feats = vk::PhysicalDeviceProtectedMemoryFeatures::default();
-        let mut mem_prio_feats = vk::PhysicalDeviceMemoryPriorityFeaturesEXT::default();
         let mut img_comp_feats = vk::PhysicalDeviceImageCompressionControlFeaturesEXT::default();
         let mut feats = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut mem_prot_feats)
-            .push_next(&mut mem_prio_feats)
             .push_next(&mut img_comp_feats);
 
         // SAFETY: handle is valid
@@ -435,7 +430,6 @@ impl PhysicalDevice {
         }
 
         self.properties.protected_memory = mem_prot_feats.protected_memory > 0;
-        self.properties.memory_priority = mem_prio_feats.memory_priority > 0;
         self.properties.image_compression_control = img_comp_feats.image_compression_control > 0;
 
         Ok(())
@@ -621,11 +615,6 @@ pub struct ImageProperties {
     pub modifiers: Vec<Modifier>,
 }
 
-pub struct MemoryInfo {
-    pub mt_index: u32,
-    pub priority: f32,
-}
-
 #[derive(PartialEq)]
 enum PipelineBarrierType {
     AcquireSrc,
@@ -753,13 +742,10 @@ impl Device {
 
         let mut mem_prot_feats = vk::PhysicalDeviceProtectedMemoryFeatures::default()
             .protected_memory(props.protected_memory);
-        let mut mem_prio_feats = vk::PhysicalDeviceMemoryPriorityFeaturesEXT::default()
-            .memory_priority(props.memory_priority);
         let mut img_comp_feats = vk::PhysicalDeviceImageCompressionControlFeaturesEXT::default()
             .image_compression_control(props.image_compression_control);
         let mut feats = vk::PhysicalDeviceFeatures2::default()
             .push_next(&mut mem_prot_feats)
-            .push_next(&mut mem_prio_feats)
             .push_next(&mut img_comp_feats);
 
         let dev_info = vk::DeviceCreateInfo::default()
@@ -1492,17 +1478,10 @@ pub struct Memory {
 }
 
 impl Memory {
-    fn with_buffer(buf: &Buffer, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<Self> {
+    fn with_buffer(buf: &Buffer, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf.handle);
 
-        let handle = Self::allocate_memory(
-            &buf.device,
-            buf.size,
-            mem_info.mt_index,
-            dedicated_info,
-            mem_info.priority,
-            dmabuf,
-        )?;
+        let handle = Self::allocate_memory(&buf.device, buf.size, mt_idx, dedicated_info, dmabuf)?;
         let mem = Self {
             device: buf.device.clone(),
             handle,
@@ -1511,17 +1490,10 @@ impl Memory {
         Ok(mem)
     }
 
-    fn with_image(img: &Image, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<Self> {
+    fn with_image(img: &Image, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(img.handle);
 
-        let handle = Self::allocate_memory(
-            &img.device,
-            img.size,
-            mem_info.mt_index,
-            dedicated_info,
-            mem_info.priority,
-            dmabuf,
-        )?;
+        let handle = Self::allocate_memory(&img.device, img.size, mt_idx, dedicated_info, dmabuf)?;
         let mem = Self {
             device: img.device.clone(),
             handle,
@@ -1533,24 +1505,17 @@ impl Memory {
     fn allocate_memory(
         dev: &Device,
         size: vk::DeviceSize,
-        mt_index: u32,
+        mt_idx: u32,
         mut dedicated_info: vk::MemoryDedicatedAllocateInfo,
-        priority: f32,
         dmabuf: Option<OwnedFd>,
     ) -> Result<vk::DeviceMemory> {
         let mut export_info = vk::ExportMemoryAllocateInfo::default()
             .handle_types(dev.properties().external_memory_type);
         let mut mem_info = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
-            .memory_type_index(mt_index)
+            .memory_type_index(mt_idx)
             .push_next(&mut export_info)
             .push_next(&mut dedicated_info);
-
-        let mut prio_info = vk::MemoryPriorityAllocateInfoEXT::default();
-        if dev.properties().memory_priority && priority != 0.5 {
-            prio_info = prio_info.priority(priority);
-            mem_info = mem_info.push_next(&mut prio_info);
-        }
 
         // VUID-VkImportMemoryFdInfoKHR-fd-00668 seems bogus
         let mut raw_fd: RawFd = -1;
@@ -1757,8 +1722,8 @@ impl Buffer {
         self.device.memory_types(self.mt_mask & mt_mask)
     }
 
-    pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
-        let mem = Memory::with_buffer(&self, mem_info, dmabuf)?;
+    pub fn bind_memory(&mut self, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<()> {
+        let mem = Memory::with_buffer(&self, mt_idx, dmabuf)?;
 
         let bind_info = vk::BindBufferMemoryInfo::default()
             .buffer(self.handle)
@@ -2022,8 +1987,8 @@ impl Image {
         self.device.memory_types(self.mt_mask & mt_mask)
     }
 
-    pub fn bind_memory(&mut self, mem_info: MemoryInfo, dmabuf: Option<OwnedFd>) -> Result<()> {
-        let mem = Memory::with_image(&self, mem_info, dmabuf)?;
+    pub fn bind_memory(&mut self, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<()> {
+        let mem = Memory::with_image(&self, mt_idx, dmabuf)?;
 
         let bind_info = vk::BindImageMemoryInfo::default()
             .image(self.handle)

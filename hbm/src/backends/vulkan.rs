@@ -144,10 +144,7 @@ fn get_memory_flags(memory_types: Vec<(u32, vk::MemoryPropertyFlags)>) -> Vec<Me
         .collect()
 }
 
-fn get_memory_info(
-    flags: MemoryFlags,
-    memory_types: Vec<(u32, vk::MemoryPropertyFlags)>,
-) -> Result<sash::MemoryInfo> {
+fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>) -> Result<u32> {
     let known_mt_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL
         | vk::MemoryPropertyFlags::HOST_VISIBLE
         | vk::MemoryPropertyFlags::HOST_COHERENT
@@ -179,12 +176,9 @@ fn get_memory_info(
         return Err(Error::InvalidParam);
     }
     let best_mt = mt_iter.find(|(_, mt_flags)| (*mt_flags & known_mt_flags) == required_flags);
-    let mt_index = best_mt.or(first_mt).unwrap().0;
-    let priority = 0.5;
+    let mt_idx = best_mt.or(first_mt).unwrap().0;
 
-    let mem_info = sash::MemoryInfo { mt_index, priority };
-
-    Ok(mem_info)
+    Ok(mt_idx)
 }
 
 fn get_memory(handle: &Handle) -> Result<&sash::Memory> {
@@ -345,12 +339,12 @@ impl super::Backend for Backend {
     ) -> Result<()> {
         match handle.payload {
             HandlePayload::Buffer(ref mut buf) => {
-                let mem_info = get_memory_info(flags, buf.memory_types(dmabuf.as_ref()))?;
-                buf.bind_memory(mem_info, dmabuf)
+                let mt_idx = find_mt(flags, buf.memory_types(dmabuf.as_ref()))?;
+                buf.bind_memory(mt_idx, dmabuf)
             }
             HandlePayload::Image(ref mut img) => {
-                let mem_info = get_memory_info(flags, img.memory_types(dmabuf.as_ref()))?;
-                img.bind_memory(mem_info, dmabuf)
+                let mt_idx = find_mt(flags, img.memory_types(dmabuf.as_ref()))?;
+                img.bind_memory(mt_idx, dmabuf)
             }
             _ => Err(Error::NoSupport),
         }
