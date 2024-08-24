@@ -22,6 +22,8 @@ bitflags::bitflags! {
         const STORAGE = 1 << 2;
         const SAMPLED = 1 << 3;
         const COLOR = 1 << 4;
+        // TODO remove this in favor of modifiers and constraints
+        const SCANOUT_HACK = 1 << 5;
     }
 }
 
@@ -73,7 +75,8 @@ fn get_buffer_info(desc: Description, usage: super::Usage) -> Result<sash::Buffe
 }
 
 fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageInfo> {
-    let valid_usage = Usage::TRANSFER | Usage::STORAGE | Usage::SAMPLED | Usage::COLOR;
+    let valid_usage =
+        Usage::TRANSFER | Usage::STORAGE | Usage::SAMPLED | Usage::COLOR | Usage::SCANOUT_HACK;
     let usage = get_usage(usage, valid_usage)?;
 
     let mut img_flags = vk::ImageCreateFlags::empty();
@@ -108,7 +111,7 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
         format: img_fmt,
         modifier: desc.modifier,
         no_compression: desc.flags.contains(ResourceFlags::NO_COMPRESSION),
-        scanout_hack: desc.flags.contains(ResourceFlags::SCANOUT),
+        scanout_hack: usage.contains(Usage::SCANOUT_HACK),
     };
 
     Ok(img_info)

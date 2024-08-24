@@ -20,7 +20,6 @@ bitflags::bitflags! {
         const COPY = 1 << 1;
         const PROTECTED = 1 << 2;
         const NO_COMPRESSION = 1 << 3;
-        const SCANOUT = 1 << 4;
     }
 }
 

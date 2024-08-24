@@ -35,8 +35,6 @@ pub const HBM_RESOURCE_FLAG_COPY: u32 = 1 << 1;
 pub const HBM_RESOURCE_FLAG_PROTECTED: u32 = 1 << 2;
 /// The BO must not be compressed.
 pub const HBM_RESOURCE_FLAG_NO_COMPRESSION: u32 = 1 << 3;
-/// The BO can be scanned out.
-pub const HBM_RESOURCE_FLAG_SCANOUT: u32 = 1 << 4;
 
 fn resource_flags_into(flags: u32) -> hbm::ResourceFlags {
     let mut res_flags = hbm::ResourceFlags::empty();
@@ -52,9 +50,6 @@ fn resource_flags_into(flags: u32) -> hbm::ResourceFlags {
     if (flags & HBM_RESOURCE_FLAG_NO_COMPRESSION) > 0 {
         res_flags |= hbm::ResourceFlags::NO_COMPRESSION;
     }
-    if (flags & HBM_RESOURCE_FLAG_SCANOUT) > 0 {
-        res_flags |= hbm::ResourceFlags::SCANOUT;
-    }
 
     res_flags
 }
@@ -69,6 +64,8 @@ pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 2;
 pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 3;
 /// The BO can be used as a GPU color image.
 pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
+/// The BO can be scanned out.
+pub const HBM_USAGE_GPU_SCANOUT_HACK: u64 = 1 << 5;
 
 fn usage_into(usage: u64) -> hbm::vulkan::Usage {
     let mut vk_usage = hbm::vulkan::Usage::empty();
@@ -86,6 +83,9 @@ fn usage_into(usage: u64) -> hbm::vulkan::Usage {
     }
     if (usage & HBM_USAGE_GPU_COLOR) > 0 {
         vk_usage |= hbm::vulkan::Usage::COLOR;
+    }
+    if (usage & HBM_USAGE_GPU_SCANOUT_HACK) > 0 {
+        vk_usage |= hbm::vulkan::Usage::SCANOUT_HACK;
     }
 
     vk_usage
