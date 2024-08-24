@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: MIT
 
 use std::collections::{hash_map::Entry, HashMap};
-use std::os::fd::{BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
 use std::{ffi, ptr, slice};
 
@@ -36,24 +35,6 @@ pub const HBM_RESOURCE_FLAG_PROTECTED: u32 = 1 << 2;
 /// The BO must not be compressed.
 pub const HBM_RESOURCE_FLAG_NO_COMPRESSION: u32 = 1 << 3;
 
-fn resource_flags_into(flags: u32) -> hbm::ResourceFlags {
-    let mut res_flags = hbm::ResourceFlags::empty();
-    if (flags & HBM_RESOURCE_FLAG_MAP) > 0 {
-        res_flags |= hbm::ResourceFlags::MAP;
-    }
-    if (flags & HBM_RESOURCE_FLAG_COPY) > 0 {
-        res_flags |= hbm::ResourceFlags::COPY;
-    }
-    if (flags & HBM_RESOURCE_FLAG_PROTECTED) > 0 {
-        res_flags |= hbm::ResourceFlags::PROTECTED;
-    }
-    if (flags & HBM_RESOURCE_FLAG_NO_COMPRESSION) > 0 {
-        res_flags |= hbm::ResourceFlags::NO_COMPRESSION;
-    }
-
-    res_flags
-}
-
 /// The BO can be used for GPU copies.
 pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
 /// The BO can be used as a GPU uniform buffer.
@@ -67,30 +48,6 @@ pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
 /// The BO can be scanned out.
 pub const HBM_USAGE_GPU_SCANOUT_HACK: u64 = 1 << 5;
 
-fn usage_into(usage: u64) -> hbm::vulkan::Usage {
-    let mut vk_usage = hbm::vulkan::Usage::empty();
-    if (usage & HBM_USAGE_GPU_TRANSFER) > 0 {
-        vk_usage |= hbm::vulkan::Usage::TRANSFER;
-    }
-    if (usage & HBM_USAGE_GPU_UNIFORM) > 0 {
-        vk_usage |= hbm::vulkan::Usage::UNIFORM;
-    }
-    if (usage & HBM_USAGE_GPU_STORAGE) > 0 {
-        vk_usage |= hbm::vulkan::Usage::STORAGE;
-    }
-    if (usage & HBM_USAGE_GPU_SAMPLED) > 0 {
-        vk_usage |= hbm::vulkan::Usage::SAMPLED;
-    }
-    if (usage & HBM_USAGE_GPU_COLOR) > 0 {
-        vk_usage |= hbm::vulkan::Usage::COLOR;
-    }
-    if (usage & HBM_USAGE_GPU_SCANOUT_HACK) > 0 {
-        vk_usage |= hbm::vulkan::Usage::SCANOUT_HACK;
-    }
-
-    vk_usage
-}
-
 /// The memory type is local to the backend.
 pub const HBM_MEMORY_FLAG_LOCAL: u32 = 1 << 0;
 /// The memory type is mappable.
@@ -99,68 +56,6 @@ pub const HBM_MEMORY_FLAG_MAPPABLE: u32 = 1 << 1;
 pub const HBM_MEMORY_FLAG_COHERENT: u32 = 1 << 2;
 /// The memory type is cached.
 pub const HBM_MEMORY_FLAG_CACHED: u32 = 1 << 3;
-
-fn memory_flags_from(mem_flags: hbm::MemoryFlags) -> u32 {
-    let mut flags = 0;
-    if mem_flags.contains(hbm::MemoryFlags::LOCAL) {
-        flags |= HBM_MEMORY_FLAG_LOCAL;
-    }
-    if mem_flags.contains(hbm::MemoryFlags::MAPPABLE) {
-        flags |= HBM_MEMORY_FLAG_MAPPABLE;
-    }
-    if mem_flags.contains(hbm::MemoryFlags::COHERENT) {
-        flags |= HBM_MEMORY_FLAG_COHERENT;
-    }
-    if mem_flags.contains(hbm::MemoryFlags::CACHED) {
-        flags |= HBM_MEMORY_FLAG_CACHED;
-    }
-
-    flags
-}
-
-fn memory_flags_into(flags: u32) -> hbm::MemoryFlags {
-    let mut mem_flags = hbm::MemoryFlags::empty();
-    if (flags & HBM_MEMORY_FLAG_LOCAL) > 0 {
-        mem_flags |= hbm::MemoryFlags::LOCAL;
-    }
-    if (flags & HBM_MEMORY_FLAG_MAPPABLE) > 0 {
-        mem_flags |= hbm::MemoryFlags::MAPPABLE;
-    }
-    if (flags & HBM_MEMORY_FLAG_COHERENT) > 0 {
-        mem_flags |= hbm::MemoryFlags::COHERENT;
-    }
-    if (flags & HBM_MEMORY_FLAG_CACHED) > 0 {
-        mem_flags |= hbm::MemoryFlags::CACHED;
-    }
-
-    mem_flags
-}
-
-/// Describes a BO.
-#[derive(Clone, Copy, Eq, Hash, PartialEq)]
-#[repr(C)]
-pub struct hbm_description {
-    /// A bitmask of `HBM_RESOURCE_FLAG_*`.
-    pub flags: u32,
-
-    /// When the format is `DRM_FORMAT_INVALID`, the BO is a buffer.  Otherwise,
-    /// the BO is an image.
-    pub format: u32,
-
-    /// The modifier can be `DRM_FORMAT_MOD_INVALID` or any valid modifier.  When it is
-    /// `DRM_FORMAT_MOD_INVALID`, HBM will pick the optimal modifier for the BO.
-    pub modifier: u64,
-
-    /// A bitmask of `HBM_USAGE_*`.
-    pub usage: u64,
-}
-
-impl hbm_description {
-    fn into(desc: *const Self) -> Self {
-        // SAFETY: desc is non-NULL
-        unsafe { *desc }
-    }
-}
 
 /// A hardware device.
 ///
@@ -179,30 +74,12 @@ struct CDevice {
 }
 
 impl CDevice {
-    fn into(dev: Self) -> *mut hbm_device {
-        let dev = Box::new(dev);
-        Box::into_raw(dev) as *mut hbm_device
-    }
-
-    fn from(dev: *mut hbm_device) -> Box<Self> {
-        // SAFETY: dev was created by Self::into
-        unsafe { Box::from_raw(dev as *mut Self) }
-    }
-
-    fn as_mut<'a>(dev: *mut hbm_device) -> &'a mut Self {
-        // SAFETY: dev was created by Self::into
-        unsafe { &mut *(dev as *mut Self) }
-    }
-
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
-        let flags = resource_flags_into(desc.flags);
-        let vk_usage = usage_into(desc.usage);
-
+        let usage = hbm::Usage::Vulkan(c::usage(desc.usage));
         let desc = hbm::Description::new()
-            .flags(flags)
+            .flags(c::res_flags(desc.flags))
             .format(hbm::Format(desc.format))
             .modifier(hbm::Modifier(desc.modifier));
-        let usage = hbm::Usage::Vulkan(vk_usage);
 
         self.device.classify(desc, slice::from_ref(&usage))
     }
@@ -222,6 +99,34 @@ impl CDevice {
 
         Ok(class)
     }
+}
+
+/// A hardware buffer object (BO).
+///
+/// This opaque struct represents a BO.  A BO can be allocated by HBM or imported from a dma-buf.
+/// A BO can only be manipulated with module-level functions.
+#[repr(C)]
+pub struct hbm_bo {
+    _data: [u8; 0],
+}
+
+/// Describes a BO.
+#[derive(Clone, Copy, Eq, Hash, PartialEq)]
+#[repr(C)]
+pub struct hbm_description {
+    /// A bitmask of `HBM_RESOURCE_FLAG_*`.
+    pub flags: u32,
+
+    /// When the format is `DRM_FORMAT_INVALID`, the BO is a buffer.  Otherwise,
+    /// the BO is an image.
+    pub format: u32,
+
+    /// The modifier can be `DRM_FORMAT_MOD_INVALID` or any valid modifier.  When it is
+    /// `DRM_FORMAT_MOD_INVALID`, HBM will pick the optimal modifier for the BO.
+    pub modifier: u64,
+
+    /// A bitmask of `HBM_USAGE_*`.
+    pub usage: u64,
 }
 
 /// Extent of a buffer BO.
@@ -251,17 +156,6 @@ pub union hbm_extent {
     pub image: hbm_extent_image,
 }
 
-impl hbm_extent {
-    fn into(extent: *const Self) -> hbm::Extent {
-        // SAFETY: extent is non-NULL
-        let extent = unsafe { &*extent };
-        // SAFETY: we just need the raw bits
-        let size = unsafe { extent.buffer.size };
-
-        hbm::Extent::new_1d(size)
-    }
-}
-
 /// An allocation constraint.
 ///
 /// An allocation constraint describes additional requirements that a BO allocation must obey.
@@ -280,95 +174,6 @@ pub struct hbm_constraint {
     pub modifier_count: u32,
 }
 
-impl hbm_constraint {
-    fn try_into(con: *const Self) -> Option<hbm::Constraint> {
-        if con.is_null() {
-            return None;
-        }
-
-        // SAFETY: con is non-NULL
-        let con = unsafe { &*con };
-        // SAFETY: con.modifiers has the right size
-        let mods = unsafe { slice::from_raw_parts(con.modifiers, con.modifier_count as usize) };
-
-        let mut con = hbm::Constraint::new()
-            .offset_align(con.offset_align)
-            .stride_align(con.stride_align)
-            .size_align(con.size_align);
-        if !mods.is_empty() {
-            let mods: Vec<hbm::Modifier> = mods.iter().copied().map(hbm::Modifier::from).collect();
-            con = con.modifiers(mods);
-        }
-
-        Some(con)
-    }
-}
-
-/// A hardware buffer object (BO).
-///
-/// This opaque struct represents a BO.  A BO can be allocated by HBM or imported from a dma-buf.
-/// A BO can only be manipulated with module-level functions.
-#[repr(C)]
-pub struct hbm_bo {
-    _data: [u8; 0],
-}
-
-impl hbm_bo {
-    fn from(bo: hbm::Bo) -> *mut Self {
-        let bo = Box::new(bo);
-        Box::into_raw(bo) as *mut Self
-    }
-
-    fn into(bo: *mut Self) -> Box<hbm::Bo> {
-        // SAFETY: bo was created by Self::from
-        unsafe { Box::from_raw(bo as *mut hbm::Bo) }
-    }
-
-    fn as_ref<'a>(bo: *mut Self) -> &'a hbm::Bo {
-        // SAFETY: bo was created by Self::from
-        unsafe { &*(bo as *const hbm::Bo) }
-    }
-
-    fn as_mut<'a>(bo: *mut Self) -> &'a mut hbm::Bo {
-        // SAFETY: bo was created by Self::from
-        unsafe { &mut *(bo as *mut hbm::Bo) }
-    }
-}
-
-fn rawfd_borrow<'a>(fd: RawFd) -> Option<BorrowedFd<'a>> {
-    if fd < 0 {
-        return None;
-    }
-
-    // SAFETY: fd is valid
-    let fd = unsafe { BorrowedFd::borrow_raw(fd) };
-    Some(fd)
-}
-
-fn rawfd_try_into(fd: RawFd) -> Option<OwnedFd> {
-    if fd < 0 {
-        return None;
-    }
-
-    // SAFETY: fd is valid
-    let fd = unsafe { OwnedFd::from_raw_fd(fd) };
-    Some(fd)
-}
-
-fn rawfd_from(fd: OwnedFd) -> RawFd {
-    fd.into_raw_fd()
-}
-
-fn rawfd_as_mut<'a>(fd: *mut RawFd) -> Option<&'a mut RawFd> {
-    if fd.is_null() {
-        return None;
-    }
-
-    // SAFETY: fd is non-NULL
-    let fd = unsafe { &mut *fd };
-    Some(fd)
-}
-
 /// Describes the physical layout of a BO.
 #[repr(C)]
 pub struct hbm_layout {
@@ -384,36 +189,6 @@ pub struct hbm_layout {
     pub strides: [u64; 4],
 }
 
-impl hbm_layout {
-    fn into(layout: *const Self) -> hbm::Layout {
-        // SAFETY: layout is non-NULL
-        let layout = unsafe { &*layout };
-
-        hbm::Layout::new()
-            .size(layout.size)
-            .modifier(hbm::Modifier(layout.modifier))
-            .plane_count(layout.plane_count)
-            .offsets(layout.offsets)
-            .strides(layout.strides)
-    }
-
-    fn as_mut<'a>(layout: *mut Self) -> &'a mut Self {
-        // SAFETY: layout is non_NULL
-        unsafe { &mut *layout }
-    }
-}
-
-fn str_as_ref<'a>(s: *const ffi::c_char) -> Option<&'a str> {
-    if s.is_null() {
-        return None;
-    }
-
-    // SAFETY: s is a non-NULL and nul-terminated
-    let s = unsafe { ffi::CStr::from_ptr(s) };
-
-    s.to_str().ok()
-}
-
 /// Describes a buffer-buffer copy.
 #[repr(C)]
 pub struct hbm_copy_buffer {
@@ -423,19 +198,6 @@ pub struct hbm_copy_buffer {
     pub dst_offset: u64,
     /// Number of bytes to copy.
     pub size: u64,
-}
-
-impl hbm_copy_buffer {
-    fn into(copy: *const Self) -> hbm::CopyBuffer {
-        // SAFETY: copy is non-NULL
-        let copy = unsafe { &*copy };
-
-        hbm::CopyBuffer {
-            src_offset: copy.src_offset,
-            dst_offset: copy.dst_offset,
-            size: copy.size,
-        }
-    }
 }
 
 /// Describes a buffer-image copy.
@@ -458,8 +220,297 @@ pub struct hbm_copy_buffer_image {
     pub height: u32,
 }
 
-impl hbm_copy_buffer_image {
-    fn into(copy: *const Self) -> hbm::CopyBufferImage {
+mod c {
+    use super::*;
+    use std::os::fd::{BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
+
+    pub fn log_lv_max(log_lv_max: hbm_log_level) -> log::LevelFilter {
+        match log_lv_max {
+            hbm_log_level::Off => log::LevelFilter::Off,
+            hbm_log_level::Error => log::LevelFilter::Error,
+            hbm_log_level::Warn => log::LevelFilter::Warn,
+            hbm_log_level::Info => log::LevelFilter::Info,
+            hbm_log_level::Debug => log::LevelFilter::Debug,
+        }
+    }
+
+    pub fn log_lv_ret(log_lv: log::Level) -> hbm_log_level {
+        match log_lv {
+            log::Level::Error => hbm_log_level::Error,
+            log::Level::Warn => hbm_log_level::Warn,
+            log::Level::Info => hbm_log_level::Info,
+            log::Level::Debug => hbm_log_level::Debug,
+            log::Level::Trace => hbm_log_level::Debug,
+        }
+    }
+
+    pub fn dev_ret(dev: CDevice) -> *mut hbm_device {
+        let dev = Box::new(dev);
+        Box::into_raw(dev) as *mut hbm_device
+    }
+
+    pub fn dev_take(dev: *mut hbm_device) -> Box<CDevice> {
+        // SAFETY: dev was created by dev_ret
+        unsafe { Box::from_raw(dev as *mut CDevice) }
+    }
+
+    pub fn dev<'a>(dev: *mut hbm_device) -> &'a mut CDevice {
+        // SAFETY: dev was created by dev_ret
+        unsafe { &mut *(dev as *mut CDevice) }
+    }
+
+    pub fn desc(desc: *const hbm_description) -> hbm_description {
+        // SAFETY: desc is non-NULL
+        unsafe { *desc }
+    }
+
+    pub fn res_flags(res_flags: u32) -> hbm::ResourceFlags {
+        let mut flags = hbm::ResourceFlags::empty();
+        if (res_flags & HBM_RESOURCE_FLAG_MAP) > 0 {
+            flags |= hbm::ResourceFlags::MAP;
+        }
+        if (res_flags & HBM_RESOURCE_FLAG_COPY) > 0 {
+            flags |= hbm::ResourceFlags::COPY;
+        }
+        if (res_flags & HBM_RESOURCE_FLAG_PROTECTED) > 0 {
+            flags |= hbm::ResourceFlags::PROTECTED;
+        }
+        if (res_flags & HBM_RESOURCE_FLAG_NO_COMPRESSION) > 0 {
+            flags |= hbm::ResourceFlags::NO_COMPRESSION;
+        }
+
+        flags
+    }
+
+    pub fn usage(usage: u64) -> hbm::vulkan::Usage {
+        let mut vk_usage = hbm::vulkan::Usage::empty();
+        if (usage & HBM_USAGE_GPU_TRANSFER) > 0 {
+            vk_usage |= hbm::vulkan::Usage::TRANSFER;
+        }
+        if (usage & HBM_USAGE_GPU_UNIFORM) > 0 {
+            vk_usage |= hbm::vulkan::Usage::UNIFORM;
+        }
+        if (usage & HBM_USAGE_GPU_STORAGE) > 0 {
+            vk_usage |= hbm::vulkan::Usage::STORAGE;
+        }
+        if (usage & HBM_USAGE_GPU_SAMPLED) > 0 {
+            vk_usage |= hbm::vulkan::Usage::SAMPLED;
+        }
+        if (usage & HBM_USAGE_GPU_COLOR) > 0 {
+            vk_usage |= hbm::vulkan::Usage::COLOR;
+        }
+        if (usage & HBM_USAGE_GPU_SCANOUT_HACK) > 0 {
+            vk_usage |= hbm::vulkan::Usage::SCANOUT_HACK;
+        }
+
+        vk_usage
+    }
+
+    pub fn mods_out(out_mods: *mut u64, mod_max: u32, mods: &Vec<hbm::Modifier>) -> u32 {
+        let mut mod_count = mods.len() as u32;
+        if mod_max == 0 {
+            return mod_count;
+        }
+
+        if mod_count > mod_max {
+            mod_count = mod_max;
+        }
+
+        // SAFETY: out_mods is large enough for mod_max modifiers
+        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_count as _) };
+
+        for (dst, src) in out_mods.iter_mut().zip(mods.into_iter()) {
+            *dst = src.0;
+        }
+
+        mod_count
+    }
+
+    pub fn extent(extent: *const hbm_extent) -> hbm::Extent {
+        // SAFETY: extent is non-NULL
+        let extent = unsafe { &*extent };
+        // SAFETY: we just need the raw bits
+        let size = unsafe { extent.buffer.size };
+
+        hbm::Extent::new_1d(size)
+    }
+
+    pub fn con_optional(con: *const hbm_constraint) -> Option<hbm::Constraint> {
+        if con.is_null() {
+            return None;
+        }
+
+        // SAFETY: con is non-NULL
+        let con = unsafe { &*con };
+        // SAFETY: con.modifiers has the right size
+        let mods = unsafe { slice::from_raw_parts(con.modifiers, con.modifier_count as usize) };
+
+        let mut con = hbm::Constraint::new()
+            .offset_align(con.offset_align)
+            .stride_align(con.stride_align)
+            .size_align(con.size_align);
+        if !mods.is_empty() {
+            let mods: Vec<hbm::Modifier> = mods.iter().copied().map(hbm::Modifier::from).collect();
+            con = con.modifiers(mods);
+        }
+
+        Some(con)
+    }
+
+    pub fn layout(layout: *const hbm_layout) -> hbm::Layout {
+        // SAFETY: layout is non-NULL
+        let layout = unsafe { &*layout };
+
+        hbm::Layout::new()
+            .size(layout.size)
+            .modifier(hbm::Modifier(layout.modifier))
+            .plane_count(layout.plane_count)
+            .offsets(layout.offsets)
+            .strides(layout.strides)
+    }
+
+    pub fn layout_out(out_layout: *mut hbm_layout, layout: hbm::Layout) {
+        // SAFETY: out_layout is non_NULL
+        let out_layout = unsafe { &mut *out_layout };
+
+        *out_layout = hbm_layout {
+            size: layout.size,
+            modifier: layout.modifier.0,
+            plane_count: layout.plane_count,
+            offsets: layout.offsets,
+            strides: layout.strides,
+        };
+    }
+
+    pub fn bo_ret(bo: hbm::Bo) -> *mut hbm_bo {
+        let bo = Box::new(bo);
+        Box::into_raw(bo) as *mut hbm_bo
+    }
+
+    pub fn bo_take(bo: *mut hbm_bo) -> Box<hbm::Bo> {
+        // SAFETY: bo was created by bo_ret
+        unsafe { Box::from_raw(bo as *mut hbm::Bo) }
+    }
+
+    pub fn bo<'a>(bo: *mut hbm_bo) -> &'a hbm::Bo {
+        // SAFETY: bo was created by bo_ret
+        unsafe { &*(bo as *const hbm::Bo) }
+    }
+
+    pub fn bo_mut<'a>(bo: *mut hbm_bo) -> &'a mut hbm::Bo {
+        // SAFETY: bo was created by bo_ret
+        unsafe { &mut *(bo as *mut hbm::Bo) }
+    }
+
+    pub fn mem_flags(mem_flags: u32) -> hbm::MemoryFlags {
+        let mut flags = hbm::MemoryFlags::empty();
+        if (mem_flags & HBM_MEMORY_FLAG_LOCAL) > 0 {
+            flags |= hbm::MemoryFlags::LOCAL;
+        }
+        if (mem_flags & HBM_MEMORY_FLAG_MAPPABLE) > 0 {
+            flags |= hbm::MemoryFlags::MAPPABLE;
+        }
+        if (mem_flags & HBM_MEMORY_FLAG_COHERENT) > 0 {
+            flags |= hbm::MemoryFlags::COHERENT;
+        }
+        if (mem_flags & HBM_MEMORY_FLAG_CACHED) > 0 {
+            flags |= hbm::MemoryFlags::CACHED;
+        }
+
+        flags
+    }
+
+    pub fn mem_flags_ret(flags: hbm::MemoryFlags) -> u32 {
+        let mut mem_flags = 0;
+        if flags.contains(hbm::MemoryFlags::LOCAL) {
+            mem_flags |= HBM_MEMORY_FLAG_LOCAL;
+        }
+        if flags.contains(hbm::MemoryFlags::MAPPABLE) {
+            mem_flags |= HBM_MEMORY_FLAG_MAPPABLE;
+        }
+        if flags.contains(hbm::MemoryFlags::COHERENT) {
+            mem_flags |= HBM_MEMORY_FLAG_COHERENT;
+        }
+        if flags.contains(hbm::MemoryFlags::CACHED) {
+            mem_flags |= HBM_MEMORY_FLAG_CACHED;
+        }
+
+        mem_flags
+    }
+
+    pub fn mem_flags_out(out_mts: *mut u32, mt_max: u32, mts: Vec<hbm::MemoryFlags>) -> u32 {
+        let mut mt_count = mts.len() as u32;
+        if mt_max == 0 {
+            return mt_count;
+        }
+
+        if mt_count > mt_max {
+            mt_count = mt_max;
+        }
+
+        // SAFETY: out_mts is large enough for mt_max memory types
+        let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_count as _) };
+
+        for (dst, src) in out_mts.iter_mut().zip(mts.into_iter()) {
+            *dst = mem_flags_ret(src);
+        }
+
+        mt_count
+    }
+
+    pub fn fd_borrow<'a>(fd: RawFd) -> Option<BorrowedFd<'a>> {
+        if fd < 0 {
+            return None;
+        }
+
+        // SAFETY: fd is valid
+        let fd = unsafe { BorrowedFd::borrow_raw(fd) };
+        Some(fd)
+    }
+
+    pub fn fd_optional(fd: RawFd) -> Option<OwnedFd> {
+        if fd < 0 {
+            return None;
+        }
+
+        // SAFETY: fd is valid
+        let fd = unsafe { OwnedFd::from_raw_fd(fd) };
+        Some(fd)
+    }
+
+    pub fn fd_ret(fd: OwnedFd) -> RawFd {
+        fd.into_raw_fd()
+    }
+
+    pub fn fd_out(out_fd: *mut RawFd, fd: Option<OwnedFd>) {
+        // SAFETY: out_fd is non-NULL
+        let out_fd = unsafe { &mut *out_fd };
+        *out_fd = fd.map_or(-1, |fd| fd.into_raw_fd());
+    }
+
+    pub fn str_optional<'a>(s: *const ffi::c_char) -> Option<&'a str> {
+        if s.is_null() {
+            return None;
+        }
+
+        // SAFETY: s is a non-NULL and nul-terminated
+        let s = unsafe { ffi::CStr::from_ptr(s) };
+
+        s.to_str().ok()
+    }
+
+    pub fn buf_copy(copy: *const hbm_copy_buffer) -> hbm::CopyBuffer {
+        // SAFETY: copy is non-NULL
+        let copy = unsafe { &*copy };
+
+        hbm::CopyBuffer {
+            src_offset: copy.src_offset,
+            dst_offset: copy.dst_offset,
+            size: copy.size,
+        }
+    }
+
+    pub fn img_copy(copy: *const hbm_copy_buffer_image) -> hbm::CopyBufferImage {
         // SAFETY: copy is non-NULL
         let copy = unsafe { &*copy };
 
@@ -482,19 +533,12 @@ impl hbm_copy_buffer_image {
 /// If `log_cb` is non-NULL, it must be a valid callback.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_log_init(
-    max_lv: hbm_log_level,
+    log_lv_max: hbm_log_level,
     log_cb: hbm_log_callback,
     cb_data: *mut ffi::c_void,
 ) {
-    let filter = match max_lv {
-        hbm_log_level::Off => log::LevelFilter::Off,
-        hbm_log_level::Error => log::LevelFilter::Error,
-        hbm_log_level::Warn => log::LevelFilter::Warn,
-        hbm_log_level::Info => log::LevelFilter::Info,
-        hbm_log_level::Debug => log::LevelFilter::Debug,
-    };
-
-    if filter == log::LevelFilter::Off || log_cb.is_none() {
+    let log_lv_max = c::log_lv_max(log_lv_max);
+    if log_lv_max == log::LevelFilter::Off || log_cb.is_none() {
         super::log::init(log::LevelFilter::Off, Box::new(|_| {}));
         return;
     }
@@ -502,23 +546,17 @@ pub unsafe extern "C" fn hbm_log_init(
     let log_cb = log_cb.unwrap();
     let cb_data = cb_data as usize;
     let cb = move |rec: &log::Record| {
-        let lv = match rec.level() {
-            log::Level::Error => hbm_log_level::Error,
-            log::Level::Warn => hbm_log_level::Warn,
-            log::Level::Info => hbm_log_level::Info,
-            log::Level::Debug => hbm_log_level::Debug,
-            log::Level::Trace => hbm_log_level::Debug,
-        };
+        let log_lv = c::log_lv_ret(rec.level());
         let msg = format!("{}", rec.args());
-        if let Ok(c_msg) = ffi::CString::new(msg) {
+
+        let _ = ffi::CString::new(msg).inspect(|cstr|
             // SAFETY: we trust the client
             unsafe {
-                log_cb(lv, c_msg.as_ptr(), cb_data as *mut ffi::c_void);
-            }
-        }
+                log_cb(log_lv, cstr.as_ptr(), cb_data as *mut ffi::c_void);
+            });
     };
 
-    super::log::init(filter, Box::new(cb));
+    super::log::init(log_lv_max, Box::new(cb));
 }
 
 /// Creates a device.
@@ -546,7 +584,7 @@ pub unsafe extern "C" fn hbm_device_create(dev: libc::dev_t, debug: bool) -> *mu
         class_cache: Mutex::new(HashMap::new()),
     };
 
-    CDevice::into(dev)
+    c::dev_ret(dev)
 }
 
 /// Destroys a device.
@@ -556,7 +594,7 @@ pub unsafe extern "C" fn hbm_device_create(dev: libc::dev_t, debug: bool) -> *mu
 /// `dev` must be a valid device.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_device_destroy(dev: *mut hbm_device) {
-    let _ = CDevice::from(dev);
+    let _ = c::dev_take(dev);
 }
 
 /// Queries the memory plane count for the speicifed format modifier.
@@ -570,15 +608,11 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
     fmt: u32,
     modifier: u64,
 ) -> u32 {
-    let dev = CDevice::as_mut(dev);
+    let dev = c::dev(dev);
 
-    match dev
-        .device
+    dev.device
         .plane_count(hbm::Format(fmt), hbm::Modifier(modifier))
-    {
-        Ok(count) => count,
-        _ => 0,
-    }
+        .unwrap_or(0)
 }
 
 /// Queries supported modifiers for a BO description.
@@ -597,8 +631,8 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     mod_max: u32,
     out_mods: *mut u64,
 ) -> i32 {
-    let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::into(desc);
+    let dev = c::dev(dev);
+    let desc = c::desc(desc);
 
     // TODO is it possible to reduce lock scope?
     let mut class_cache = dev.class_cache.lock().unwrap();
@@ -612,21 +646,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
         None => return 0,
     };
 
-    let mut mod_len = mods.len();
-    if mod_max > 0 {
-        if mod_len > mod_max as _ {
-            mod_len = mod_max as _;
-        }
-
-        // SAFETY: out_mods is large enough for mod_max modifiers
-        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_len) };
-
-        for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
-            *dst = src.0;
-        }
-    }
-
-    mod_len as i32
+    c::mods_out(out_mods, mod_max, mods) as i32
 }
 
 /// Queries modifier support for a BO description.
@@ -642,8 +662,8 @@ pub unsafe extern "C" fn hbm_device_supports_modifier(
     desc: *const hbm_description,
     modifier: u64,
 ) -> bool {
-    let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::into(desc);
+    let dev = c::dev(dev);
+    let desc = c::desc(desc);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
     let class = match dev.get_class(&mut class_cache, desc) {
@@ -673,10 +693,10 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
     extent: *const hbm_extent,
     con: *const hbm_constraint,
 ) -> *mut hbm_bo {
-    let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::into(desc);
-    let extent = hbm_extent::into(extent);
-    let con = hbm_constraint::try_into(con);
+    let dev = c::dev(dev);
+    let desc = c::desc(desc);
+    let extent = c::extent(extent);
+    let con = c::con_optional(con);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
     let class = match dev.get_class(&mut class_cache, desc) {
@@ -689,7 +709,7 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
         _ => return ptr::null_mut(),
     };
 
-    hbm_bo::from(bo)
+    c::bo_ret(bo)
 }
 
 /// Create a BO with an explicit layout.
@@ -708,10 +728,10 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
     extent: *const hbm_extent,
     layout: *const hbm_layout,
 ) -> *mut hbm_bo {
-    let dev = CDevice::as_mut(dev);
-    let desc = hbm_description::into(desc);
-    let extent = hbm_extent::into(extent);
-    let layout = hbm_layout::into(layout);
+    let dev = c::dev(dev);
+    let desc = c::desc(desc);
+    let extent = c::extent(extent);
+    let layout = c::layout(layout);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
     let class = match dev.get_class(&mut class_cache, desc) {
@@ -724,7 +744,7 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
         _ => return ptr::null_mut(),
     };
 
-    hbm_bo::from(bo)
+    c::bo_ret(bo)
 }
 
 /// Destroys a BO.
@@ -734,7 +754,7 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
-    let _ = hbm_bo::into(bo);
+    let _ = c::bo_take(bo);
 }
 
 /// Queries the physical layout of a BO.
@@ -744,19 +764,14 @@ pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_layout) -> bool {
-    let bo = hbm_bo::as_ref(bo);
-    let out_layout = hbm_layout::as_mut(out_layout);
+    let bo = c::bo(bo);
 
     let layout = match bo.layout() {
         Ok(layout) => layout,
         _ => return false,
     };
 
-    out_layout.size = layout.size;
-    out_layout.modifier = layout.modifier.0;
-    out_layout.plane_count = layout.plane_count;
-    out_layout.offsets = layout.offsets;
-    out_layout.strides = layout.strides;
+    c::layout_out(out_layout, layout);
 
     true
 }
@@ -773,25 +788,12 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
     mt_max: u32,
     out_mts: *mut u32,
 ) -> u32 {
-    let bo = hbm_bo::as_ref(bo);
-    let dmabuf = rawfd_borrow(dmabuf);
+    let bo = c::bo(bo);
+    let dmabuf = c::fd_borrow(dmabuf);
 
     let mts = bo.memory_types(dmabuf);
-    let mut mt_len = mts.len();
-    if mt_max > 0 {
-        if mt_len > mt_max as _ {
-            mt_len = mt_max as _;
-        }
 
-        // SAFETY: out_mts is large enough for mt_max memory types
-        let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_len) };
-
-        for (dst, src) in out_mts.iter_mut().zip(mts.into_iter()) {
-            *dst = memory_flags_from(src);
-        }
-    }
-
-    mt_len as u32
+    c::mem_flags_out(out_mts, mt_max, mts)
 }
 
 /// Bind memory to a BO.
@@ -800,12 +802,12 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
 ///
 /// `bo` must be a valid BO.
 #[no_mangle]
-pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, flags: u32, dmabuf: i32) -> bool {
-    let bo = hbm_bo::as_mut(bo);
-    let flags = memory_flags_into(flags);
-    let dmabuf = rawfd_try_into(dmabuf);
+pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mem_flags: u32, dmabuf: i32) -> bool {
+    let bo = c::bo_mut(bo);
+    let mem_flags = c::mem_flags(mem_flags);
+    let dmabuf = c::fd_optional(dmabuf);
 
-    bo.bind_memory(flags, dmabuf).is_ok()
+    bo.bind_memory(mem_flags, dmabuf).is_ok()
 }
 
 /// Exports a dma-buf from a BO.
@@ -815,15 +817,15 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, flags: u32, dmabuf:
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
-    let bo = hbm_bo::as_ref(bo);
-    let name = str_as_ref(name);
+    let bo = c::bo(bo);
+    let name = c::str_optional(name);
 
     let dmabuf = match bo.export_dma_buf(name) {
         Ok(dmabuf) => dmabuf,
         _ => return -1,
     };
 
-    rawfd_from(dmabuf)
+    c::fd_ret(dmabuf)
 }
 
 /// Map a BO for direct CPU access.
@@ -835,7 +837,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_map(bo: *mut hbm_bo) -> *mut ffi::c_void {
-    let bo = hbm_bo::as_mut(bo);
+    let bo = c::bo_mut(bo);
 
     let mapping = match bo.map() {
         Ok(mapping) => mapping,
@@ -852,7 +854,7 @@ pub unsafe extern "C" fn hbm_bo_map(bo: *mut hbm_bo) -> *mut ffi::c_void {
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_unmap(bo: *mut hbm_bo) {
-    let bo = hbm_bo::as_mut(bo);
+    let bo = c::bo_mut(bo);
 
     bo.unmap();
 }
@@ -864,7 +866,7 @@ pub unsafe extern "C" fn hbm_bo_unmap(bo: *mut hbm_bo) {
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_flush(bo: *mut hbm_bo) {
-    let bo = hbm_bo::as_ref(bo);
+    let bo = c::bo(bo);
 
     let _ = bo.flush();
 }
@@ -876,7 +878,7 @@ pub unsafe extern "C" fn hbm_bo_flush(bo: *mut hbm_bo) {
 /// `bo` must be a valid BO.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_invalidate(bo: *mut hbm_bo) {
-    let bo = hbm_bo::as_ref(bo);
+    let bo = c::bo(bo);
 
     let _ = bo.invalidate();
 }
@@ -906,23 +908,19 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
     in_sync_fd: i32,
     out_sync_fd: *mut i32,
 ) -> bool {
-    let bo = hbm_bo::as_ref(bo);
-    let src = hbm_bo::as_ref(src);
-    let copy = hbm_copy_buffer::into(copy);
-    let in_sync_fd = rawfd_try_into(in_sync_fd);
-    let out_sync_fd = rawfd_as_mut(out_sync_fd);
+    let bo = c::bo(bo);
+    let src = c::bo(src);
+    let copy = c::buf_copy(copy);
+    let in_sync_fd = c::fd_optional(in_sync_fd);
+    let wait = out_sync_fd.is_null();
 
-    let sync_fd = bo.copy_buffer(src, copy, in_sync_fd, out_sync_fd.is_none());
+    let sync_fd = bo.copy_buffer(src, copy, in_sync_fd, wait);
     if sync_fd.is_err() {
         return false;
     }
 
-    if let Some(out_sync_fd) = out_sync_fd {
-        *out_sync_fd = if let Some(sync_fd) = sync_fd.unwrap() {
-            rawfd_from(sync_fd)
-        } else {
-            -1
-        }
+    if !wait {
+        c::fd_out(out_sync_fd, sync_fd.unwrap());
     }
 
     true
@@ -953,23 +951,19 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     in_sync_fd: i32,
     out_sync_fd: *mut i32,
 ) -> bool {
-    let bo = hbm_bo::as_ref(bo);
-    let src = hbm_bo::as_ref(src);
-    let copy = hbm_copy_buffer_image::into(copy);
-    let in_sync_fd = rawfd_try_into(in_sync_fd);
-    let out_sync_fd = rawfd_as_mut(out_sync_fd);
+    let bo = c::bo(bo);
+    let src = c::bo(src);
+    let copy = c::img_copy(copy);
+    let in_sync_fd = c::fd_optional(in_sync_fd);
+    let wait = out_sync_fd.is_null();
 
-    let sync_fd = bo.copy_buffer_image(src, copy, in_sync_fd, out_sync_fd.is_none());
+    let sync_fd = bo.copy_buffer_image(src, copy, in_sync_fd, wait);
     if sync_fd.is_err() {
         return false;
     }
 
-    if let Some(out_sync_fd) = out_sync_fd {
-        *out_sync_fd = if let Some(sync_fd) = sync_fd.unwrap() {
-            rawfd_from(sync_fd)
-        } else {
-            -1
-        }
+    if !wait {
+        c::fd_out(out_sync_fd, sync_fd.unwrap());
     }
 
     true
