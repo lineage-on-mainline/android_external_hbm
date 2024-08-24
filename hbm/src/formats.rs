@@ -205,11 +205,6 @@ pub fn format_class(fmt: Format) -> Result<&'static FormatClass> {
     Ok(fmt_class)
 }
 
-pub fn block_size(fmt: Format, plane: u32) -> Result<u32> {
-    let fmt_class = format_class(fmt)?;
-    Ok(fmt_class.block_size[plane as usize] as u32)
-}
-
 pub fn packed_layout(
     fmt: Format,
     width: u32,
@@ -364,11 +359,6 @@ mod tests {
         for fmt in KNOWN_FORMATS {
             assert!(super::format_class(fmt).is_ok());
         }
-    }
-
-    #[test]
-    fn block_size() {
-        assert_eq!(super::block_size(R8, 0).unwrap(), 1);
     }
 
     #[test]
