@@ -210,11 +210,6 @@ pub fn block_size(fmt: Format, plane: u32) -> Result<u32> {
     Ok(fmt_class.block_size[plane as usize] as u32)
 }
 
-pub fn plane_count(fmt: Format) -> Result<u32> {
-    let fmt_class = format_class(fmt)?;
-    Ok(fmt_class.plane_count as u32)
-}
-
 pub fn packed_layout(
     fmt: Format,
     width: u32,

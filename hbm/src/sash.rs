@@ -223,7 +223,7 @@ impl Drop for Instance {
 }
 
 struct FormatProperties {
-    drm_format: super::types::Format,
+    format_class: &'static formats::FormatClass,
     modifiers: Vec<vk::DrmFormatModifierPropertiesEXT>,
 }
 
@@ -567,11 +567,11 @@ impl PhysicalDevice {
                 continue;
             }
 
-            let fmt_plane_count = formats::plane_count(drm_fmt).unwrap() as u32;
-            let mods = self.get_format_properties(fmt, fmt_plane_count);
+            let fmt_class = formats::format_class(drm_fmt).unwrap();
+            let mods = self.get_format_properties(fmt, fmt_class.plane_count as u32);
 
             let fmt_props = FormatProperties {
-                drm_format: drm_fmt,
+                format_class: fmt_class,
                 modifiers: mods,
             };
             self.properties.formats.insert(fmt, fmt_props);
@@ -812,12 +812,12 @@ impl Device {
 
     fn format_plane_count(&self, fmt: vk::Format) -> u32 {
         let fmt_props = self.properties().formats.get(&fmt).unwrap();
-        formats::plane_count(fmt_props.drm_format).unwrap()
+        fmt_props.format_class.plane_count as u32
     }
 
     fn format_block_size(&self, fmt: vk::Format, plane: u32) -> u32 {
         let fmt_props = self.properties().formats.get(&fmt).unwrap();
-        formats::block_size(fmt_props.drm_format, plane).unwrap()
+        fmt_props.format_class.block_size[plane as usize] as u32
     }
 
     pub fn buffer_properties(&self, buf_info: BufferInfo) -> Result<BufferProperties> {
@@ -1747,7 +1747,6 @@ impl Buffer {
     }
 
     pub fn copy_buffer(&self, src: &Buffer, copy: CopyBuffer) -> Result<()> {
-        // TODO validate
         let region = vk::BufferCopy::default()
             .src_offset(copy.src_offset)
             .dst_offset(copy.dst_offset)
@@ -1757,7 +1756,6 @@ impl Buffer {
     }
 
     pub fn copy_image(&self, src: &Image, copy: CopyBufferImage) -> Result<()> {
-        // TODO validate
         let region = src.get_copy_region(copy);
 
         self.device
@@ -2012,15 +2010,17 @@ impl Image {
     }
 
     fn get_copy_region(&self, copy: CopyBufferImage) -> vk::BufferImageCopy {
-        let aspect = if self.format_plane_count == 1 {
-            vk::ImageAspectFlags::COLOR
-        } else {
-            match copy.plane {
-                1 => vk::ImageAspectFlags::PLANE_0,
-                2 => vk::ImageAspectFlags::PLANE_1,
-                3 => vk::ImageAspectFlags::PLANE_2,
-                _ => unreachable!(),
+        let aspect = match copy.plane {
+            0 => {
+                if self.format_plane_count > 1 {
+                    vk::ImageAspectFlags::PLANE_0
+                } else {
+                    vk::ImageAspectFlags::COLOR
+                }
             }
+            1 => vk::ImageAspectFlags::PLANE_1,
+            2 => vk::ImageAspectFlags::PLANE_2,
+            _ => unreachable!(),
         };
 
         let bpp = self.device.format_block_size(self.format, copy.plane);
@@ -2044,7 +2044,6 @@ impl Image {
     }
 
     pub fn copy_buffer(&self, src: &Buffer, copy: CopyBufferImage) -> Result<()> {
-        // TODO validate
         let region = self.get_copy_region(copy);
 
         self.device
