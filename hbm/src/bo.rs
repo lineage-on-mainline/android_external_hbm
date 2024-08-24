@@ -23,6 +23,7 @@ pub struct Bo {
     handle: Handle,
     is_buffer: bool,
     mappable: bool,
+    copyable: bool,
 
     state: Mutex<BoState>,
 }
@@ -31,6 +32,7 @@ impl Bo {
     fn new(device: Arc<Device>, class: &Class, mut handle: Handle) -> Self {
         let is_buffer = class.description.is_buffer();
         let mappable = class.description.flags.contains(ResourceFlags::MAP);
+        let copyable = class.description.flags.contains(ResourceFlags::COPY);
 
         handle.backend_index = class.backend_index;
 
@@ -45,6 +47,7 @@ impl Bo {
             handle,
             is_buffer,
             mappable,
+            copyable,
             state: Mutex::new(state),
         }
     }
@@ -209,7 +212,7 @@ impl Bo {
         wait: bool,
     ) -> Result<Option<OwnedFd>> {
         // TODO validate copy
-        if !self.is_buffer || !src.is_buffer {
+        if !self.copyable || !self.is_buffer || !src.is_buffer {
             return Err(Error::InvalidParam);
         }
 
@@ -230,7 +233,7 @@ impl Bo {
         wait: bool,
     ) -> Result<Option<OwnedFd>> {
         // TODO validate copy
-        if self.is_buffer == src.is_buffer {
+        if self.copyable || self.is_buffer == src.is_buffer {
             return Err(Error::InvalidParam);
         }
 
