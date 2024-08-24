@@ -9,11 +9,13 @@ use super::device::Device;
 use super::types::{Access, Error, Mapping, Result};
 use super::utils;
 use std::os::fd::{BorrowedFd, OwnedFd};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard};
 
-struct MappingState {
-    refcount: u32,
+struct BoState {
+    bound: bool,
+
     mapping: Option<Mapping>,
+    refcount: u32,
 }
 
 pub struct Bo {
@@ -22,18 +24,37 @@ pub struct Bo {
     is_buffer: bool,
     mappable: bool,
 
-    // is this how mutex works?
-    state: Mutex<MappingState>,
+    state: Mutex<BoState>,
 }
 
 impl Bo {
+    fn new(device: Arc<Device>, class: &Class, mut handle: Handle) -> Self {
+        let is_buffer = class.description.is_buffer();
+        let mappable = class.description.flags.contains(ResourceFlags::MAP);
+
+        handle.backend_index = class.backend_index;
+
+        let state = BoState {
+            bound: false,
+            mapping: None,
+            refcount: 0,
+        };
+
+        Self {
+            device,
+            handle,
+            is_buffer,
+            mappable,
+            state: Mutex::new(state),
+        }
+    }
+
     pub fn with_constraint(
         device: Arc<Device>,
         class: &Class,
         extent: Extent,
         con: Option<Constraint>,
     ) -> Result<Self> {
-        // what if class is from another device?
         if !class.validate(extent) {
             return Err(Error::InvalidParam);
         }
@@ -47,9 +68,9 @@ impl Bo {
             con.or(class.constraint.clone())
         };
 
-        let backend = &device.backends[class.backend_index];
+        let backend = device.backend(class.backend_index);
         let handle = backend.with_constraint(class, extent, con)?;
-        let bo = Self::with_handle(device, class, handle);
+        let bo = Self::new(device, class, handle);
 
         Ok(bo)
     }
@@ -64,29 +85,11 @@ impl Bo {
             return Err(Error::InvalidParam);
         }
 
-        let backend = &device.backends[class.backend_index];
+        let backend = device.backend(class.backend_index);
         let handle = backend.with_layout(class, extent, layout)?;
-        let bo = Self::with_handle(device, class, handle);
+        let bo = Self::new(device, class, handle);
 
         Ok(bo)
-    }
-
-    fn with_handle(device: Arc<Device>, class: &Class, mut handle: Handle) -> Self {
-        let is_buffer = class.description.is_buffer();
-        let mappable = class.description.flags.contains(ResourceFlags::MAP);
-
-        handle.backend_index = class.backend_index;
-
-        Self {
-            device,
-            handle,
-            is_buffer,
-            mappable,
-            state: Mutex::new(MappingState {
-                refcount: 0,
-                mapping: None,
-            }),
-        }
     }
 
     fn backend(&self) -> &dyn Backend {
@@ -102,13 +105,33 @@ impl Bo {
     }
 
     pub fn bind_memory(&mut self, flags: MemoryFlags, dmabuf: Option<OwnedFd>) -> Result<()> {
+        let mut state = self.state.lock().unwrap();
+
+        if state.bound {
+            return Err(Error::InvalidParam);
+        }
+
         let backend = self.device.backend(self.handle.backend_index);
-        let handle = &mut self.handle;
-        backend.bind_memory(handle, flags, dmabuf)
+        backend.bind_memory(&mut self.handle, flags, dmabuf)?;
+
+        state.bound = true;
+
+        Ok(())
+    }
+
+    fn lock_state(&self) -> Result<MutexGuard<BoState>> {
+        let state = self.state.lock().unwrap();
+
+        if !state.bound {
+            return Err(Error::InvalidParam);
+        }
+
+        Ok(state)
     }
 
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
-        // TODO this can race with map/unmap
+        let _state = self.lock_state()?;
+
         self.backend().export_dma_buf(&self.handle, name)
     }
 
@@ -117,7 +140,7 @@ impl Bo {
             return Err(Error::InvalidParam);
         }
 
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.lock_state()?;
 
         if state.refcount > 0 {
             state.refcount += 1;
@@ -132,7 +155,7 @@ impl Bo {
     }
 
     pub fn unmap(&mut self) {
-        let mut state = self.state.lock().unwrap();
+        let mut state = self.lock_state().unwrap();
 
         if state.refcount == 0 {
             return;
@@ -146,7 +169,7 @@ impl Bo {
     }
 
     pub fn flush(&self) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.lock_state()?;
 
         if state.refcount == 0 {
             return Err(Error::InvalidParam);
@@ -156,7 +179,7 @@ impl Bo {
     }
 
     pub fn invalidate(&self) -> Result<()> {
-        let state = self.state.lock().unwrap();
+        let state = self.lock_state()?;
 
         if state.refcount == 0 {
             return Err(Error::InvalidParam);
@@ -165,31 +188,38 @@ impl Bo {
         self.backend().invalidate(&self.handle)
     }
 
+    fn wait_copy(&self, sync_fd: Option<OwnedFd>, wait: bool) -> Result<Option<OwnedFd>> {
+        let sync_fd = if wait {
+            sync_fd.and_then(|sync_fd| {
+                let _ = utils::poll(sync_fd, Access::Read);
+                None
+            })
+        } else {
+            sync_fd
+        };
+
+        Ok(sync_fd)
+    }
+
     pub fn copy_buffer(
         &self,
         src: &Bo,
         copy: CopyBuffer,
         sync_fd: Option<OwnedFd>,
-        sync: bool,
+        wait: bool,
     ) -> Result<Option<OwnedFd>> {
+        // TODO validate copy
         if !self.is_buffer || !src.is_buffer {
             return Err(Error::InvalidParam);
         }
 
-        // what if src is from another device?
-        let ret = self
-            .backend()
-            .copy_buffer(&self.handle, &src.handle, copy, sync_fd);
-        if !sync {
-            return ret;
-        }
+        let _state = self.lock_state()?;
 
-        ret.map(|sync_fd| {
-            if let Some(sync_fd) = sync_fd {
-                let _ = utils::poll(sync_fd, Access::Read);
-            }
-            None
-        })
+        let sync_fd = self
+            .backend()
+            .copy_buffer(&self.handle, &src.handle, copy, sync_fd)?;
+
+        self.wait_copy(sync_fd, wait)
     }
 
     pub fn copy_buffer_image(
@@ -197,26 +227,20 @@ impl Bo {
         src: &Bo,
         copy: CopyBufferImage,
         sync_fd: Option<OwnedFd>,
-        sync: bool,
+        wait: bool,
     ) -> Result<Option<OwnedFd>> {
+        // TODO validate copy
         if self.is_buffer == src.is_buffer {
             return Err(Error::InvalidParam);
         }
 
-        // what if src is from another device?
-        let ret = self
-            .backend()
-            .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd);
-        if !sync {
-            return ret;
-        }
+        let _state = self.lock_state()?;
 
-        ret.map(|sync_fd| {
-            if let Some(sync_fd) = sync_fd {
-                let _ = utils::poll(sync_fd, Access::Read);
-            }
-            None
-        })
+        let sync_fd = self
+            .backend()
+            .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd)?;
+
+        self.wait_copy(sync_fd, wait)
     }
 }
 
