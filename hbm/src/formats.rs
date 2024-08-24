@@ -131,13 +131,13 @@ pub fn name(fmt: Format) -> Option<&'static str> {
     Some(name)
 }
 
-struct FormatClass {
-    plane_count: u8,
-    block_size: [u8; 3],
-    block_extent: [(u8, u8); 3],
+pub struct FormatClass {
+    pub plane_count: u8,
+    pub block_size: [u8; 3],
+    pub block_extent: [(u8, u8); 3],
 }
 
-fn format_class(fmt: Format) -> Result<&'static FormatClass> {
+pub fn format_class(fmt: Format) -> Result<&'static FormatClass> {
     // this follows Vulkan format compatibility classes
     const FORMAT_CLASS_1B: FormatClass = FormatClass {
         plane_count: 1,

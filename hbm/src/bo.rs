@@ -6,7 +6,8 @@ use super::backends::{
     ResourceFlags,
 };
 use super::device::Device;
-use super::types::{Access, Error, Mapping, Result};
+use super::formats;
+use super::types::{Access, Error, Format, Mapping, Result, Size};
 use super::utils;
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -21,19 +22,15 @@ struct BoState {
 pub struct Bo {
     device: Arc<Device>,
     handle: Handle,
-    is_buffer: bool,
-    mappable: bool,
-    copyable: bool,
+    flags: ResourceFlags,
+    format: Format,
+    extent: Extent,
 
     state: Mutex<BoState>,
 }
 
 impl Bo {
-    fn new(device: Arc<Device>, class: &Class, mut handle: Handle) -> Self {
-        let is_buffer = class.description.is_buffer();
-        let mappable = class.description.flags.contains(ResourceFlags::MAP);
-        let copyable = class.description.flags.contains(ResourceFlags::COPY);
-
+    fn new(device: Arc<Device>, class: &Class, extent: Extent, mut handle: Handle) -> Self {
         handle.backend_index = class.backend_index;
 
         let state = BoState {
@@ -45,9 +42,9 @@ impl Bo {
         Self {
             device,
             handle,
-            is_buffer,
-            mappable,
-            copyable,
+            flags: class.description.flags,
+            format: class.description.format,
+            extent,
             state: Mutex::new(state),
         }
     }
@@ -73,7 +70,7 @@ impl Bo {
 
         let backend = device.backend(class.backend_index);
         let handle = backend.with_constraint(class, extent, con)?;
-        let bo = Self::new(device, class, handle);
+        let bo = Self::new(device, class, extent, handle);
 
         Ok(bo)
     }
@@ -90,13 +87,25 @@ impl Bo {
 
         let backend = device.backend(class.backend_index);
         let handle = backend.with_layout(class, extent, layout)?;
-        let bo = Self::new(device, class, handle);
+        let bo = Self::new(device, class, extent, handle);
 
         Ok(bo)
     }
 
     fn backend(&self) -> &dyn Backend {
         self.device.backend(self.handle.backend_index)
+    }
+
+    fn is_buffer(&self) -> bool {
+        self.format.is_invalid()
+    }
+
+    fn can_map(&self) -> bool {
+        self.flags.contains(ResourceFlags::MAP)
+    }
+
+    fn can_copy(&self) -> bool {
+        self.flags.contains(ResourceFlags::COPY)
     }
 
     pub fn layout(&self) -> Result<Layout> {
@@ -122,6 +131,11 @@ impl Bo {
         Ok(())
     }
 
+    fn is_bound(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        state.bound
+    }
+
     fn lock_state(&self) -> Result<MutexGuard<BoState>> {
         let state = self.state.lock().unwrap();
 
@@ -139,7 +153,7 @@ impl Bo {
     }
 
     pub fn map(&mut self) -> Result<Mapping> {
-        if !self.mappable {
+        if !self.can_map() {
             return Err(Error::InvalidParam);
         }
 
@@ -191,6 +205,73 @@ impl Bo {
         self.backend().invalidate(&self.handle)
     }
 
+    fn validate_copy(&self, src: &Bo) -> bool {
+        self.can_copy() && self.is_bound() && src.can_copy() && src.is_bound()
+    }
+
+    fn validate_copy_buffer(&self, src: &Bo, copy: &CopyBuffer) -> bool {
+        if !self.validate_copy(src) || !self.is_buffer() || !src.is_buffer() {
+            return false;
+        }
+
+        let src_size = src.extent.size();
+        let dst_size = self.extent.size();
+
+        copy.size > 0
+            && copy.src_offset <= src_size
+            && copy.size <= src_size - copy.src_offset
+            && copy.dst_offset <= dst_size
+            && copy.size <= dst_size - copy.dst_offset
+    }
+
+    fn validate_copy_buffer_image(&self, src: &Bo, copy: &CopyBufferImage) -> bool {
+        if !self.validate_copy(src) || (self.is_buffer() == src.is_buffer()) {
+            return false;
+        }
+
+        let size;
+        let mut width;
+        let mut height;
+        let fmt;
+        if self.is_buffer() {
+            size = self.extent.size();
+            width = src.extent.width();
+            height = src.extent.height();
+            fmt = src.format;
+        } else {
+            size = src.extent.size();
+            width = self.extent.width();
+            height = self.extent.height();
+            fmt = self.format;
+        }
+
+        let fmt_class = formats::format_class(fmt).unwrap();
+        let plane_count = fmt_class.plane_count as u32;
+        if copy.plane >= plane_count {
+            return false;
+        }
+
+        let bpp = fmt_class.block_size[copy.plane as usize] as Size;
+        width /= fmt_class.block_extent[copy.plane as usize].0 as u32;
+        height /= fmt_class.block_extent[copy.plane as usize].1 as u32;
+
+        if copy.offset % bpp != 0
+            || copy.stride % bpp != 0
+            || copy.stride / bpp < copy.width as Size
+        {
+            return false;
+        }
+
+        copy.width > 0
+            && copy.height > 0
+            && copy.offset <= size
+            && copy.stride <= (size - copy.offset) / copy.height as Size
+            && copy.x <= width
+            && copy.y <= height
+            && copy.width <= width - copy.x
+            && copy.height <= height - copy.y
+    }
+
     fn wait_copy(&self, sync_fd: Option<OwnedFd>, wait: bool) -> Result<Option<OwnedFd>> {
         let sync_fd = if wait {
             sync_fd.and_then(|sync_fd| {
@@ -211,12 +292,9 @@ impl Bo {
         sync_fd: Option<OwnedFd>,
         wait: bool,
     ) -> Result<Option<OwnedFd>> {
-        // TODO validate copy
-        if !self.copyable || !self.is_buffer || !src.is_buffer {
+        if !self.validate_copy_buffer(src, &copy) {
             return Err(Error::InvalidParam);
         }
-
-        let _state = self.lock_state()?;
 
         let sync_fd = self
             .backend()
@@ -232,12 +310,9 @@ impl Bo {
         sync_fd: Option<OwnedFd>,
         wait: bool,
     ) -> Result<Option<OwnedFd>> {
-        // TODO validate copy
-        if self.copyable || self.is_buffer == src.is_buffer {
+        if !self.validate_copy_buffer_image(src, &copy) {
             return Err(Error::InvalidParam);
         }
-
-        let _state = self.lock_state()?;
 
         let sync_fd = self
             .backend()
