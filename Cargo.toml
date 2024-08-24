@@ -3,7 +3,7 @@ members = ["hbm", "hbm-minigbm", "hbm-gralloc"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.2"
+version = "0.1.3"
 authors = ["Chia-I Wu"]
 edition = "2021"
 repository = "https://gitlab.freedesktop.org/olv/hbm"
