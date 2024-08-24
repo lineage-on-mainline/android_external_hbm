@@ -1723,7 +1723,7 @@ impl Buffer {
     }
 
     pub fn bind_memory(&mut self, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<()> {
-        let mem = Memory::with_buffer(&self, mt_idx, dmabuf)?;
+        let mem = Memory::with_buffer(self, mt_idx, dmabuf)?;
 
         let bind_info = vk::BindBufferMemoryInfo::default()
             .buffer(self.handle)
@@ -1986,7 +1986,7 @@ impl Image {
     }
 
     pub fn bind_memory(&mut self, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<()> {
-        let mem = Memory::with_image(&self, mt_idx, dmabuf)?;
+        let mem = Memory::with_image(self, mt_idx, dmabuf)?;
 
         let bind_info = vk::BindImageMemoryInfo::default()
             .image(self.handle)

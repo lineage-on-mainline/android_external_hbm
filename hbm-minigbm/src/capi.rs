@@ -621,7 +621,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
         // SAFETY: out_mods is large enough for mod_max modifiers
         let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_len) };
 
-        for (dst, src) in out_mods.iter_mut().zip(mods.into_iter()) {
+        for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
             *dst = src.0;
         }
     }
@@ -805,10 +805,7 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, flags: u32, dmabuf:
     let flags = memory_flags_into(flags);
     let dmabuf = rawfd_try_into(dmabuf);
 
-    match bo.bind_memory(flags, dmabuf) {
-        Ok(_) => true,
-        Err(_) => false,
-    }
+    bo.bind_memory(flags, dmabuf).is_ok()
 }
 
 /// Exports a dma-buf from a BO.
