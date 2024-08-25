@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::{
-    Class, Constraint, CopyBuffer, CopyBufferImage, Description, Extent, Handle, HandlePayload,
-    Layout, MemoryType, ResourceFlags,
+    Class, Constraint, CopyBuffer, CopyBufferImage, Description, Extent, Flags, Handle,
+    HandlePayload, Layout, MemoryType,
 };
 use crate::formats;
 use crate::sash;
@@ -40,18 +40,18 @@ fn get_usage(usage: super::Usage, valid_usage: Usage) -> Result<Usage> {
     Ok(usage)
 }
 
-fn get_buffer_info(flags: ResourceFlags, usage: super::Usage) -> Result<sash::BufferInfo> {
+fn get_buffer_info(flags: Flags, usage: super::Usage) -> Result<sash::BufferInfo> {
     let valid_usage = Usage::TRANSFER | Usage::UNIFORM | Usage::STORAGE;
     let usage = get_usage(usage, valid_usage)?;
 
     let mut buf_flags = vk::BufferCreateFlags::empty();
     let mut buf_usage = vk::BufferUsageFlags::empty();
 
-    if flags.contains(ResourceFlags::PROTECTED) {
+    if flags.contains(Flags::PROTECTED) {
         buf_flags |= vk::BufferCreateFlags::PROTECTED;
     }
 
-    if flags.contains(ResourceFlags::COPY) || usage.contains(Usage::TRANSFER) {
+    if flags.contains(Flags::COPY) || usage.contains(Usage::TRANSFER) {
         buf_usage |= vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST;
     }
     if usage.contains(Usage::UNIFORM) {
@@ -69,17 +69,13 @@ fn get_buffer_info(flags: ResourceFlags, usage: super::Usage) -> Result<sash::Bu
     let buf_info = sash::BufferInfo {
         flags: buf_flags,
         usage: buf_usage,
-        external: flags.contains(ResourceFlags::EXTERNAL),
+        external: flags.contains(Flags::EXTERNAL),
     };
 
     Ok(buf_info)
 }
 
-fn get_image_info(
-    flags: ResourceFlags,
-    fmt: Format,
-    usage: super::Usage,
-) -> Result<sash::ImageInfo> {
+fn get_image_info(flags: Flags, fmt: Format, usage: super::Usage) -> Result<sash::ImageInfo> {
     let valid_usage =
         Usage::TRANSFER | Usage::STORAGE | Usage::SAMPLED | Usage::COLOR | Usage::SCANOUT_HACK;
     let usage = get_usage(usage, valid_usage)?;
@@ -88,11 +84,11 @@ fn get_image_info(
     let mut img_usage = vk::ImageUsageFlags::empty();
     let (img_fmt, _) = formats::to_vk(fmt)?;
 
-    if flags.contains(ResourceFlags::PROTECTED) {
+    if flags.contains(Flags::PROTECTED) {
         img_flags |= vk::ImageCreateFlags::PROTECTED;
     }
 
-    if flags.contains(ResourceFlags::COPY) || usage.contains(Usage::TRANSFER) {
+    if flags.contains(Flags::COPY) || usage.contains(Usage::TRANSFER) {
         img_usage |= vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
     }
     if usage.contains(Usage::STORAGE) {
@@ -114,8 +110,8 @@ fn get_image_info(
         flags: img_flags,
         usage: img_usage,
         format: img_fmt,
-        external: flags.contains(ResourceFlags::EXTERNAL),
-        no_compression: flags.contains(ResourceFlags::NO_COMPRESSION),
+        external: flags.contains(Flags::EXTERNAL),
+        no_compression: flags.contains(Flags::NO_COMPRESSION),
         scanout_hack: usage.contains(Usage::SCANOUT_HACK),
     };
 

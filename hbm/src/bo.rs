@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{
-    Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Handle, Layout, MemoryType,
-    ResourceFlags,
+    Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Flags, Handle, Layout,
+    MemoryType,
 };
 use super::device::Device;
 use super::formats;
@@ -22,7 +22,7 @@ struct BoState {
 pub struct Bo {
     device: Arc<Device>,
 
-    flags: ResourceFlags,
+    flags: Flags,
     format: Format,
     backend_index: usize,
     extent: Extent,
@@ -100,15 +100,15 @@ impl Bo {
     }
 
     fn can_external(&self) -> bool {
-        self.flags.contains(ResourceFlags::EXTERNAL)
+        self.flags.contains(Flags::EXTERNAL)
     }
 
     fn can_map(&self) -> bool {
-        self.flags.contains(ResourceFlags::MAP)
+        self.flags.contains(Flags::MAP)
     }
 
     fn can_copy(&self) -> bool {
-        self.flags.contains(ResourceFlags::COPY)
+        self.flags.contains(Flags::COPY)
     }
 
     fn is_buffer(&self) -> bool {

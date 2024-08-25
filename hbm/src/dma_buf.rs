@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{
-    Class, Constraint, Description, Extent, Handle, HandlePayload, Layout, MemoryType,
-    ResourceFlags, Usage,
+    Class, Constraint, Description, Extent, Flags, Handle, HandlePayload, Layout, MemoryType, Usage,
 };
 use super::types::{Access, Error, Mapping, Result, Size};
 use super::utils;
@@ -64,7 +63,7 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
         return Err(Error::NoSupport);
     }
 
-    let unsupported_flags = ResourceFlags::PROTECTED;
+    let unsupported_flags = Flags::PROTECTED;
     if desc.flags.intersects(unsupported_flags) {
         return Err(Error::NoSupport);
     }

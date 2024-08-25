@@ -27,15 +27,15 @@ pub type hbm_log_callback = Option<
 >;
 
 /// The BO can be exported/imported.
-pub const HBM_RESOURCE_FLAG_EXTERNAL: u32 = 1 << 0;
+pub const HBM_FLAG_EXTERNAL: u32 = 1 << 0;
 /// The BO can be mapped.
-pub const HBM_RESOURCE_FLAG_MAP: u32 = 1 << 1;
+pub const HBM_FLAG_MAP: u32 = 1 << 1;
 /// The BO can be copied to or copied from.
-pub const HBM_RESOURCE_FLAG_COPY: u32 = 1 << 2;
+pub const HBM_FLAG_COPY: u32 = 1 << 2;
 /// The BO must be allocated from a protected heap.
-pub const HBM_RESOURCE_FLAG_PROTECTED: u32 = 1 << 3;
+pub const HBM_FLAG_PROTECTED: u32 = 1 << 3;
 /// The BO must not be compressed.
-pub const HBM_RESOURCE_FLAG_NO_COMPRESSION: u32 = 1 << 4;
+pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 4;
 
 /// The BO can be used for GPU copies.
 pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
@@ -79,7 +79,7 @@ impl CDevice {
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
         let usage = hbm::Usage::Vulkan(c::usage(desc.usage));
         let desc = hbm::Description::new()
-            .flags(c::res_flags(desc.flags))
+            .flags(c::flags(desc.flags))
             .format(hbm::Format(desc.format))
             .modifier(hbm::Modifier(desc.modifier));
 
@@ -116,7 +116,7 @@ pub struct hbm_bo {
 #[derive(Clone, Copy, Eq, Hash, PartialEq)]
 #[repr(C)]
 pub struct hbm_description {
-    /// A bitmask of `HBM_RESOURCE_FLAG_*`.
+    /// A bitmask of `HBM_FLAG_*`.
     pub flags: u32,
 
     /// When the format is `DRM_FORMAT_INVALID`, the BO is a buffer.  Otherwise,
@@ -266,22 +266,22 @@ mod c {
         unsafe { *desc }
     }
 
-    pub fn res_flags(res_flags: u32) -> hbm::ResourceFlags {
-        let mut flags = hbm::ResourceFlags::empty();
-        if (res_flags & HBM_RESOURCE_FLAG_EXTERNAL) > 0 {
-            flags |= hbm::ResourceFlags::EXTERNAL;
+    pub fn flags(c_flags: u32) -> hbm::Flags {
+        let mut flags = hbm::Flags::empty();
+        if (c_flags & HBM_FLAG_EXTERNAL) > 0 {
+            flags |= hbm::Flags::EXTERNAL;
         }
-        if (res_flags & HBM_RESOURCE_FLAG_MAP) > 0 {
-            flags |= hbm::ResourceFlags::MAP;
+        if (c_flags & HBM_FLAG_MAP) > 0 {
+            flags |= hbm::Flags::MAP;
         }
-        if (res_flags & HBM_RESOURCE_FLAG_COPY) > 0 {
-            flags |= hbm::ResourceFlags::COPY;
+        if (c_flags & HBM_FLAG_COPY) > 0 {
+            flags |= hbm::Flags::COPY;
         }
-        if (res_flags & HBM_RESOURCE_FLAG_PROTECTED) > 0 {
-            flags |= hbm::ResourceFlags::PROTECTED;
+        if (c_flags & HBM_FLAG_PROTECTED) > 0 {
+            flags |= hbm::Flags::PROTECTED;
         }
-        if (res_flags & HBM_RESOURCE_FLAG_NO_COMPRESSION) > 0 {
-            flags |= hbm::ResourceFlags::NO_COMPRESSION;
+        if (c_flags & HBM_FLAG_NO_COMPRESSION) > 0 {
+            flags |= hbm::Flags::NO_COMPRESSION;
         }
 
         flags

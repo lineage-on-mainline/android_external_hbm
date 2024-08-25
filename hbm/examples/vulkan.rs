@@ -1,11 +1,11 @@
 use drm_fourcc::DrmFourcc;
-use hbm::{Format, MemoryType, ResourceFlags, Usage};
+use hbm::{Flags, Format, MemoryType, Usage};
 use std::slice;
 use std::sync::Arc;
 
 fn test_image(dev: Arc<hbm::Device>) {
     let img_desc = hbm::Description::new()
-        .flags(ResourceFlags::EXTERNAL | ResourceFlags::MAP | ResourceFlags::COPY)
+        .flags(Flags::EXTERNAL | Flags::MAP | Flags::COPY)
         .format(Format::new(DrmFourcc::Argb8888 as u32));
     let img_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let img_class = dev.classify(img_desc, slice::from_ref(&img_usage)).unwrap();
@@ -61,7 +61,7 @@ fn test_image(dev: Arc<hbm::Device>) {
         height: img_height,
     };
 
-    let buf_desc = hbm::Description::new().flags(ResourceFlags::MAP | ResourceFlags::COPY);
+    let buf_desc = hbm::Description::new().flags(Flags::MAP | Flags::COPY);
     let buf_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let buf_class = dev.classify(buf_desc, slice::from_ref(&buf_usage)).unwrap();
     let buf_size = (img_width * img_height * 4) as u64;
@@ -79,8 +79,7 @@ fn test_image(dev: Arc<hbm::Device>) {
 }
 
 fn test_buffer(dev: Arc<hbm::Device>) {
-    let buf_desc = hbm::Description::new()
-        .flags(ResourceFlags::EXTERNAL | ResourceFlags::MAP | ResourceFlags::COPY);
+    let buf_desc = hbm::Description::new().flags(Flags::EXTERNAL | Flags::MAP | Flags::COPY);
     let buf_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let buf_class = dev.classify(buf_desc, slice::from_ref(&buf_usage)).unwrap();
 

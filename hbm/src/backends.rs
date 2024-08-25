@@ -15,7 +15,7 @@ use std::os::fd::{BorrowedFd, OwnedFd};
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
-    pub struct ResourceFlags: u32 {
+    pub struct Flags: u32 {
         const EXTERNAL = 1 << 0;
         const MAP = 1 << 1;
         const COPY = 1 << 2;
@@ -27,7 +27,7 @@ bitflags::bitflags! {
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct Description {
-    pub flags: ResourceFlags,
+    pub flags: Flags,
     pub format: Format,
     pub modifier: Modifier,
 }
@@ -37,7 +37,7 @@ impl Description {
         Default::default()
     }
 
-    pub fn flags(mut self, flags: ResourceFlags) -> Self {
+    pub fn flags(mut self, flags: Flags) -> Self {
         self.flags = flags;
         self
     }
@@ -219,7 +219,7 @@ impl Constraint {
 #[derive(Clone, Debug, Default)]
 pub struct Class {
     // these are copied from user inputs
-    pub(crate) flags: ResourceFlags,
+    pub(crate) flags: Flags,
     pub(crate) format: Format,
     pub(crate) usage: Usage,
 
