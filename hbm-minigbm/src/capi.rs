@@ -50,7 +50,7 @@ pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
 /// The BO can be scanned out.
 pub const HBM_USAGE_GPU_SCANOUT_HACK: u64 = 1 << 5;
 
-/// The memory type is local to the backend.
+/// The memory type is local to the device.
 pub const HBM_MEMORY_TYPE_LOCAL: u32 = 1 << 0;
 /// The memory type is mappable.
 pub const HBM_MEMORY_TYPE_MAPPABLE: u32 = 1 << 1;
@@ -123,8 +123,8 @@ pub struct hbm_description {
     /// the BO is an image.
     pub format: u32,
 
-    /// The modifier can be `DRM_FORMAT_MOD_INVALID` or any valid modifier.  When it is
-    /// `DRM_FORMAT_MOD_INVALID`, HBM will pick the optimal modifier for the BO.
+    /// When the modifier is `DRM_FORMAT_MOD_INVALID`, HBM will pick the optimal modifier.
+    /// Otherwise, HBM will use the specified modifier.
     pub modifier: u64,
 
     /// A bitmask of `HBM_USAGE_*`.
@@ -375,7 +375,7 @@ mod c {
     }
 
     pub fn layout_out(out_layout: *mut hbm_layout, layout: hbm::Layout) {
-        // SAFETY: out_layout is non_NULL
+        // SAFETY: out_layout is non-NULL
         let out_layout = unsafe { &mut *out_layout };
 
         *out_layout = hbm_layout {
@@ -601,7 +601,8 @@ pub unsafe extern "C" fn hbm_device_destroy(dev: *mut hbm_device) {
     let _ = c::dev_take(dev);
 }
 
-/// Queries the memory plane count for the speicifed format modifier.
+/// Queries the memory plane count for the speicifed format modifier.  Returns 0 if the format or
+/// the modifier is not supported.
 ///
 /// # Safety
 ///
@@ -619,7 +620,8 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
         .unwrap_or(0)
 }
 
-/// Queries supported modifiers for a BO description.
+/// Queries supported modifiers for a BO description.  Returns 0 if the BO description is not
+/// supported.
 ///
 /// # Safety
 ///
@@ -627,7 +629,7 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
 ///
 /// `desc` must be non-NULL.
 ///
-/// If `out_mods` is non-NULL, it must point to a large enough array of at least `mod_max` elements.
+/// `out_mods` must point to an array of at least `mod_max` modifiers.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_device_get_modifiers(
     dev: *mut hbm_device,
@@ -708,13 +710,15 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
 
 /// Create a BO with an explicit layout.
 ///
+/// Ownership of `dmabuf` is not transferred.
+///
 /// # Safety
 ///
 /// `dev` must be a valid device.
 ///
 /// `desc`, `extent`, and `layout` must be non-NULL.
 ///
-/// `dmabuf` must be a valid dma-buf.
+/// If `dmabuf` is non-negative, it must be a valid dma-buf.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_create_with_layout(
     dev: *mut hbm_device,
@@ -756,6 +760,8 @@ pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
 /// # Safety
 ///
 /// `bo` must be a valid BO.
+///
+/// `out_layout` must be non-NULL.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_layout) {
     let bo = c::bo(bo);
@@ -769,6 +775,8 @@ pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_lay
 /// # Safety
 ///
 /// `bo` must be a valid BO.
+///
+/// `out_mts` must point to an array of at least `mt_max` memory types.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_memory_types(
     bo: *mut hbm_bo,
@@ -782,11 +790,18 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
     c::mt_out(out_mts, mt_max, mts)
 }
 
-/// Bind memory to a BO.
+/// Bind a memory to a BO.
+///
+/// If `dmabuf` is negative, the memory is allocated.  Otherwise, it is imported from `dmabuf` and
+/// the ownership of `dmabuf` is always transferred.
+///
+/// When importing, the BO must have `HBM_FLAG_EXTERNAL`.
 ///
 /// # Safety
 ///
 /// `bo` must be a valid BO.
+///
+/// If `dmabuf` is non-negative, it must be a valid dma-buf.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i32) -> bool {
     let bo = c::bo_mut(bo);
@@ -798,9 +813,13 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i3
 
 /// Exports a dma-buf from a BO.
 ///
+/// The BO must have `HBM_FLAG_EXTERNAL` and must have a memory bound.
+///
 /// # Safety
 ///
 /// `bo` must be a valid BO.
+///
+/// If `name` is non-NULL, it must be a valid C-string.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
     let bo = c::bo(bo);
@@ -815,7 +834,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
 
 /// Map a BO for direct CPU access.
 ///
-/// The BO must have `HBM_FLAG_MAP`.
+/// The BO must have `HBM_FLAG_MAP` and must have a memory bound.
 ///
 /// # Safety
 ///
@@ -869,8 +888,8 @@ pub unsafe extern "C" fn hbm_bo_invalidate(bo: *mut hbm_bo) {
 
 /// Performs a buffer-buffer copy between two BOs.
 ///
-/// This function copies the contents from `src` to `bo`.  Both BOs must be buffers and must have
-/// `HBM_FLAG_COPY`.
+/// This function copies the contents from `src` to `bo`.  Both BOs must be buffers, must have
+/// `HBM_FLAG_COPY`, and must have memories bound.
 ///
 /// If `in_sync_fd` is non-negative, it must be a valid sync fd and its ownership is transferred to
 /// this function.  The copy starts after the sync fd signals.
@@ -884,6 +903,10 @@ pub unsafe extern "C" fn hbm_bo_invalidate(bo: *mut hbm_bo) {
 /// `bo` and `src` must be valid BOs belonging to the same device.
 ///
 /// `copy` must be non-NULL.
+///
+/// If `in_sync_fd` is non-negative, it must be a valid dma-buf.
+///
+/// If `out_sync_fd` is non-NULL, it must be point to an i32.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_copy_buffer(
     bo: *mut hbm_bo,
@@ -912,7 +935,7 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
 /// Performs a buffer-image copy between two BOs.
 ///
 /// This function copies the contents from `src` to `bo`.  One of them must be a buffer and the
-/// other must be an image.  Both must have `HBM_FLAG_COPY`.
+/// other must be an image.  Both must have `HBM_FLAG_COPY` and must have memory bound.
 ///
 /// If `in_sync_fd` is non-negative, it must be a valid sync fd and its ownership is transferred to
 /// this function.  The copy starts after the sync fd signals.
@@ -926,6 +949,8 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
 /// `bo` and `src` must be valid BOs belonging to the same device.
 ///
 /// `copy` must be non-NULL.
+///
+/// If `in_sync_fd` is non-negative, it must be a valid dma-buf.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     bo: *mut hbm_bo,
