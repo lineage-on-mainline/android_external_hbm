@@ -407,17 +407,11 @@ pub(crate) enum HandlePayload {
 
 pub struct Handle {
     pub(crate) payload: HandlePayload,
-
-    // this is set by Bo
-    pub(crate) backend_index: usize,
 }
 
 impl Handle {
     pub(crate) fn new(payload: HandlePayload) -> Self {
-        Self {
-            payload,
-            backend_index: 0,
-        }
+        Self { payload }
     }
 }
 

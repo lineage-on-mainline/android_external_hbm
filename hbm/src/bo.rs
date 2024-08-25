@@ -21,18 +21,19 @@ struct BoState {
 
 pub struct Bo {
     device: Arc<Device>,
-    handle: Handle,
+
     flags: ResourceFlags,
     format: Format,
+    backend_index: usize,
     extent: Extent,
+
+    handle: Handle,
 
     state: Mutex<BoState>,
 }
 
 impl Bo {
-    fn new(device: Arc<Device>, class: &Class, extent: Extent, mut handle: Handle) -> Self {
-        handle.backend_index = class.backend_index;
-
+    fn new(device: Arc<Device>, class: &Class, extent: Extent, handle: Handle) -> Self {
         let state = BoState {
             bound: false,
             mapping: None,
@@ -41,10 +42,11 @@ impl Bo {
 
         Self {
             device,
-            handle,
             flags: class.description.flags,
             format: class.description.format,
+            backend_index: class.backend_index,
             extent,
+            handle,
             state: Mutex::new(state),
         }
     }
@@ -94,7 +96,7 @@ impl Bo {
     }
 
     fn backend(&self) -> &dyn Backend {
-        self.device.backend(self.handle.backend_index)
+        self.device.backend(self.backend_index)
     }
 
     fn is_buffer(&self) -> bool {
@@ -132,7 +134,7 @@ impl Bo {
             return Err(Error::InvalidParam);
         }
 
-        let backend = self.device.backend(self.handle.backend_index);
+        let backend = self.device.backend(self.backend_index);
         backend.bind_memory(&mut self.handle, flags, dmabuf)?;
 
         state.bound = true;
