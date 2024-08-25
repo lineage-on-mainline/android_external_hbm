@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{
-    Class, Constraint, Description, Extent, Handle, HandlePayload, Layout, MemoryFlags,
+    Class, Constraint, Description, Extent, Handle, HandlePayload, Layout, MemoryType,
     ResourceFlags, Usage,
 };
 use super::types::{Access, Error, Mapping, Result, Size};
@@ -107,13 +107,13 @@ pub fn layout(handle: &Handle) -> Layout {
     handle.as_ref().layout
 }
 
-pub fn memory_types(_handle: &Handle) -> Vec<MemoryFlags> {
-    vec![MemoryFlags::MAPPABLE]
+pub fn memory_types(_handle: &Handle) -> Vec<MemoryType> {
+    vec![MemoryType::MAPPABLE]
 }
 
 pub fn bind_memory<T>(
     handle: &mut Handle,
-    flags: MemoryFlags,
+    mt: MemoryType,
     dmabuf: Option<OwnedFd>,
     alloc: T,
 ) -> Result<()>
@@ -122,7 +122,7 @@ where
 {
     let res = handle.as_mut();
 
-    if !MemoryFlags::MAPPABLE.contains(flags) {
+    if !MemoryType::MAPPABLE.contains(mt) {
         return Err(Error::InvalidParam);
     }
 

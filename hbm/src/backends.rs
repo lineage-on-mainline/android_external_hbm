@@ -422,7 +422,7 @@ impl Handle {
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, PartialEq)]
-    pub struct MemoryFlags: u32 {
+    pub struct MemoryType: u32 {
         const LOCAL = 1 << 0;
         const MAPPABLE = 1 << 1;
         const COHERENT = 1 << 2;
@@ -483,14 +483,14 @@ pub trait Backend: Send + Sync {
         dma_buf::layout(handle)
     }
 
-    fn memory_types(&self, handle: &Handle) -> Vec<MemoryFlags> {
+    fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
         dma_buf::memory_types(handle)
     }
 
     fn bind_memory(
         &self,
         _handle: &mut Handle,
-        _flags: MemoryFlags,
+        _mt: MemoryType,
         _dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         Err(Error::NoSupport)

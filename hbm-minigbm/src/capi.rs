@@ -51,13 +51,13 @@ pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
 pub const HBM_USAGE_GPU_SCANOUT_HACK: u64 = 1 << 5;
 
 /// The memory type is local to the backend.
-pub const HBM_MEMORY_FLAG_LOCAL: u32 = 1 << 0;
+pub const HBM_MEMORY_TYPE_LOCAL: u32 = 1 << 0;
 /// The memory type is mappable.
-pub const HBM_MEMORY_FLAG_MAPPABLE: u32 = 1 << 1;
+pub const HBM_MEMORY_TYPE_MAPPABLE: u32 = 1 << 1;
 /// The memory type is coherent.
-pub const HBM_MEMORY_FLAG_COHERENT: u32 = 1 << 2;
+pub const HBM_MEMORY_TYPE_COHERENT: u32 = 1 << 2;
 /// The memory type is cached.
-pub const HBM_MEMORY_FLAG_CACHED: u32 = 1 << 3;
+pub const HBM_MEMORY_TYPE_CACHED: u32 = 1 << 3;
 
 /// A hardware device.
 ///
@@ -311,7 +311,7 @@ mod c {
         vk_usage
     }
 
-    pub fn mods_out(out_mods: *mut u64, mod_max: u32, mods: &[hbm::Modifier]) -> u32 {
+    pub fn mod_out(out_mods: *mut u64, mod_max: u32, mods: &[hbm::Modifier]) -> u32 {
         let mut mod_count = mods.len() as u32;
         if mod_max == 0 {
             return mod_count;
@@ -407,43 +407,43 @@ mod c {
         unsafe { &mut *(bo as *mut hbm::Bo) }
     }
 
-    pub fn mem_flags(mem_flags: u32) -> hbm::MemoryFlags {
-        let mut flags = hbm::MemoryFlags::empty();
-        if (mem_flags & HBM_MEMORY_FLAG_LOCAL) > 0 {
-            flags |= hbm::MemoryFlags::LOCAL;
+    pub fn mt(c_mt: u32) -> hbm::MemoryType {
+        let mut mt = hbm::MemoryType::empty();
+        if (c_mt & HBM_MEMORY_TYPE_LOCAL) > 0 {
+            mt |= hbm::MemoryType::LOCAL;
         }
-        if (mem_flags & HBM_MEMORY_FLAG_MAPPABLE) > 0 {
-            flags |= hbm::MemoryFlags::MAPPABLE;
+        if (c_mt & HBM_MEMORY_TYPE_MAPPABLE) > 0 {
+            mt |= hbm::MemoryType::MAPPABLE;
         }
-        if (mem_flags & HBM_MEMORY_FLAG_COHERENT) > 0 {
-            flags |= hbm::MemoryFlags::COHERENT;
+        if (c_mt & HBM_MEMORY_TYPE_COHERENT) > 0 {
+            mt |= hbm::MemoryType::COHERENT;
         }
-        if (mem_flags & HBM_MEMORY_FLAG_CACHED) > 0 {
-            flags |= hbm::MemoryFlags::CACHED;
+        if (c_mt & HBM_MEMORY_TYPE_CACHED) > 0 {
+            mt |= hbm::MemoryType::CACHED;
         }
 
-        flags
+        mt
     }
 
-    pub fn mem_flags_ret(flags: hbm::MemoryFlags) -> u32 {
-        let mut mem_flags = 0;
-        if flags.contains(hbm::MemoryFlags::LOCAL) {
-            mem_flags |= HBM_MEMORY_FLAG_LOCAL;
+    pub fn mt_ret(mt: hbm::MemoryType) -> u32 {
+        let mut c_mt = 0;
+        if mt.contains(hbm::MemoryType::LOCAL) {
+            c_mt |= HBM_MEMORY_TYPE_LOCAL;
         }
-        if flags.contains(hbm::MemoryFlags::MAPPABLE) {
-            mem_flags |= HBM_MEMORY_FLAG_MAPPABLE;
+        if mt.contains(hbm::MemoryType::MAPPABLE) {
+            c_mt |= HBM_MEMORY_TYPE_MAPPABLE;
         }
-        if flags.contains(hbm::MemoryFlags::COHERENT) {
-            mem_flags |= HBM_MEMORY_FLAG_COHERENT;
+        if mt.contains(hbm::MemoryType::COHERENT) {
+            c_mt |= HBM_MEMORY_TYPE_COHERENT;
         }
-        if flags.contains(hbm::MemoryFlags::CACHED) {
-            mem_flags |= HBM_MEMORY_FLAG_CACHED;
+        if mt.contains(hbm::MemoryType::CACHED) {
+            c_mt |= HBM_MEMORY_TYPE_CACHED;
         }
 
-        mem_flags
+        c_mt
     }
 
-    pub fn mem_flags_out(out_mts: *mut u32, mt_max: u32, mts: Vec<hbm::MemoryFlags>) -> u32 {
+    pub fn mt_out(out_mts: *mut u32, mt_max: u32, mts: Vec<hbm::MemoryType>) -> u32 {
         let mut mt_count = mts.len() as u32;
         if mt_max == 0 {
             return mt_count;
@@ -457,7 +457,7 @@ mod c {
         let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_count as _) };
 
         for (dst, src) in out_mts.iter_mut().zip(mts.into_iter()) {
-            *dst = mem_flags_ret(src);
+            *dst = mt_ret(src);
         }
 
         mt_count
@@ -648,7 +648,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
 
     let mods = dev.device.modifiers(class);
 
-    c::mods_out(out_mods, mod_max, mods) as i32
+    c::mod_out(out_mods, mod_max, mods) as i32
 }
 
 /// Queries modifier support for a BO description.
@@ -786,7 +786,7 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
 
     let mts = bo.memory_types();
 
-    c::mem_flags_out(out_mts, mt_max, mts)
+    c::mt_out(out_mts, mt_max, mts)
 }
 
 /// Bind memory to a BO.
@@ -795,12 +795,12 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
 ///
 /// `bo` must be a valid BO.
 #[no_mangle]
-pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mem_flags: u32, dmabuf: i32) -> bool {
+pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i32) -> bool {
     let bo = c::bo_mut(bo);
-    let mem_flags = c::mem_flags(mem_flags);
+    let mt = c::mt(mt);
     let dmabuf = c::fd_optional(dmabuf);
 
-    bo.bind_memory(mem_flags, dmabuf).is_ok()
+    bo.bind_memory(mt, dmabuf).is_ok()
 }
 
 /// Exports a dma-buf from a BO.

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: MIT
 
 use super::backends::{
-    Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Handle, Layout, MemoryFlags,
+    Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Handle, Layout, MemoryType,
     ResourceFlags,
 };
 use super::device::Device;
@@ -138,11 +138,11 @@ impl Bo {
         self.backend().layout(&self.handle)
     }
 
-    pub fn memory_types(&self) -> Vec<MemoryFlags> {
+    pub fn memory_types(&self) -> Vec<MemoryType> {
         self.backend().memory_types(&self.handle)
     }
 
-    pub fn bind_memory(&mut self, flags: MemoryFlags, dmabuf: Option<OwnedFd>) -> Result<()> {
+    pub fn bind_memory(&mut self, mt: MemoryType, dmabuf: Option<OwnedFd>) -> Result<()> {
         if dmabuf.is_some() && !self.can_external() {
             return Err(Error::InvalidParam);
         }
@@ -154,7 +154,7 @@ impl Bo {
         }
 
         let backend = self.device.backend(self.backend_index);
-        backend.bind_memory(&mut self.handle, flags, dmabuf)?;
+        backend.bind_memory(&mut self.handle, mt, dmabuf)?;
 
         state.bound = true;
 

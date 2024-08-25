@@ -1,5 +1,5 @@
 use drm_fourcc::DrmFourcc;
-use hbm::{Format, MemoryFlags, Usage};
+use hbm::{Format, MemoryType, Usage};
 
 #[cfg(feature = "drm")]
 fn main() {
@@ -26,7 +26,7 @@ fn main() {
 
     let bo_extent = hbm::Extent::new_2d(256, 256);
     let mut bo = hbm::Bo::with_constraint(dev.clone(), &bo_class, bo_extent, None).unwrap();
-    bo.bind_memory(MemoryFlags::empty(), None).unwrap();
+    bo.bind_memory(MemoryType::empty(), None).unwrap();
 }
 
 #[cfg(not(feature = "drm"))]

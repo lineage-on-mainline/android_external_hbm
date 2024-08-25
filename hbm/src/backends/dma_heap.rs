@@ -1,7 +1,7 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
-use super::{Handle, MemoryFlags};
+use super::{Handle, MemoryType};
 use crate::dma_buf;
 use crate::types::{Error, Result};
 use crate::utils;
@@ -15,11 +15,11 @@ impl super::Backend for Backend {
     fn bind_memory(
         &self,
         handle: &mut Handle,
-        flags: MemoryFlags,
+        mt: MemoryType,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         let alloc = |size| utils::dma_heap_alloc(&self.fd, size);
-        dma_buf::bind_memory(handle, flags, dmabuf, alloc)
+        dma_buf::bind_memory(handle, mt, dmabuf, alloc)
     }
 }
 

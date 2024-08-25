@@ -3,7 +3,7 @@
 
 use super::{
     Class, Constraint, CopyBuffer, CopyBufferImage, Description, Extent, Handle, HandlePayload,
-    Layout, MemoryFlags, ResourceFlags,
+    Layout, MemoryType, ResourceFlags,
 };
 use crate::formats;
 use crate::sash;
@@ -122,57 +122,45 @@ fn get_image_info(
     Ok(img_info)
 }
 
-fn get_memory_flags(memory_types: Vec<(u32, vk::MemoryPropertyFlags)>) -> Vec<MemoryFlags> {
-    let known_mt_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL
-        | vk::MemoryPropertyFlags::HOST_VISIBLE
-        | vk::MemoryPropertyFlags::HOST_COHERENT
-        | vk::MemoryPropertyFlags::HOST_CACHED;
+fn mt_flags_to_mt(mt_flags: vk::MemoryPropertyFlags) -> MemoryType {
+    let mut mt = MemoryType::empty();
+    if mt_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
+        mt |= MemoryType::LOCAL;
+    }
+    if mt_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
+        mt |= MemoryType::MAPPABLE;
+        if mt_flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
+            mt |= MemoryType::COHERENT;
+        }
+        if mt_flags.contains(vk::MemoryPropertyFlags::HOST_CACHED) {
+            mt |= MemoryType::CACHED;
+        }
+    }
 
-    memory_types
-        .into_iter()
-        .map(|(_, mut mt_flags)| {
-            mt_flags &= known_mt_flags;
-
-            let mut flags = MemoryFlags::empty();
-            if mt_flags.contains(vk::MemoryPropertyFlags::DEVICE_LOCAL) {
-                flags |= MemoryFlags::LOCAL;
-            }
-            if mt_flags.contains(vk::MemoryPropertyFlags::HOST_VISIBLE) {
-                flags |= MemoryFlags::MAPPABLE;
-                if mt_flags.contains(vk::MemoryPropertyFlags::HOST_COHERENT) {
-                    flags |= MemoryFlags::COHERENT;
-                }
-                if mt_flags.contains(vk::MemoryPropertyFlags::HOST_CACHED) {
-                    flags |= MemoryFlags::CACHED;
-                }
-            }
-
-            flags
-        })
-        .collect()
+    mt
 }
 
-fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>) -> Result<u32> {
-    let known_mt_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL
-        | vk::MemoryPropertyFlags::HOST_VISIBLE
-        | vk::MemoryPropertyFlags::HOST_COHERENT
-        | vk::MemoryPropertyFlags::HOST_CACHED;
-
-    let mut required_flags = vk::MemoryPropertyFlags::empty();
-    if flags.contains(MemoryFlags::LOCAL) {
-        required_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
+fn mt_flags_from_mt(mt: MemoryType) -> vk::MemoryPropertyFlags {
+    let mut mt_flags = vk::MemoryPropertyFlags::empty();
+    if mt.contains(MemoryType::LOCAL) {
+        mt_flags |= vk::MemoryPropertyFlags::DEVICE_LOCAL;
     }
-    if flags.contains(MemoryFlags::MAPPABLE) {
-        required_flags |= vk::MemoryPropertyFlags::HOST_VISIBLE;
-        if flags.contains(MemoryFlags::COHERENT) {
-            required_flags |= vk::MemoryPropertyFlags::HOST_COHERENT;
+    if mt.contains(MemoryType::MAPPABLE) {
+        mt_flags |= vk::MemoryPropertyFlags::HOST_VISIBLE;
+        if mt.contains(MemoryType::COHERENT) {
+            mt_flags |= vk::MemoryPropertyFlags::HOST_COHERENT;
         }
-        if flags.contains(MemoryFlags::CACHED) {
-            required_flags |= vk::MemoryPropertyFlags::HOST_CACHED;
+        if mt.contains(MemoryType::CACHED) {
+            mt_flags |= vk::MemoryPropertyFlags::HOST_CACHED;
         }
     }
 
-    let mut mt_iter = memory_types
+    mt_flags
+}
+
+fn best_mt_index(mts: Vec<(u32, vk::MemoryPropertyFlags)>, mt: MemoryType) -> Result<u32> {
+    let required_flags = mt_flags_from_mt(mt);
+    let mut mt_iter = mts
         .into_iter()
         .filter(|(_, mt_flags)| mt_flags.contains(required_flags));
 
@@ -180,7 +168,13 @@ fn find_mt(flags: MemoryFlags, memory_types: Vec<(u32, vk::MemoryPropertyFlags)>
     if first_mt.is_none() {
         return Err(Error::InvalidParam);
     }
+
+    let known_mt_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL
+        | vk::MemoryPropertyFlags::HOST_VISIBLE
+        | vk::MemoryPropertyFlags::HOST_COHERENT
+        | vk::MemoryPropertyFlags::HOST_CACHED;
     let best_mt = mt_iter.find(|(_, mt_flags)| (*mt_flags & known_mt_flags) == required_flags);
+
     let mt_idx = best_mt.or(first_mt).unwrap().0;
 
     Ok(mt_idx)
@@ -339,31 +333,33 @@ impl super::Backend for Backend {
         Ok(handle)
     }
 
-    fn memory_types(&self, handle: &Handle) -> Vec<MemoryFlags> {
-        let memory_types = match handle.payload {
+    fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
+        let mts = match handle.payload {
             HandlePayload::Buffer(ref buf) => buf.memory_types(),
             HandlePayload::Image(ref img) => img.memory_types(),
             _ => Vec::new(),
         };
 
-        get_memory_flags(memory_types)
+        mts.into_iter()
+            .map(|(_, mt_flags)| mt_flags_to_mt(mt_flags))
+            .collect()
     }
 
     fn bind_memory(
         &self,
         handle: &mut Handle,
-        flags: MemoryFlags,
+        mt: MemoryType,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         match handle.payload {
             HandlePayload::Buffer(ref mut buf) => {
-                let memory_types = buf.memory_types();
-                let mt_idx = find_mt(flags, memory_types)?;
+                let mts = buf.memory_types();
+                let mt_idx = best_mt_index(mts, mt)?;
                 buf.bind_memory(mt_idx, dmabuf)
             }
             HandlePayload::Image(ref mut img) => {
-                let memory_types = img.memory_types();
-                let mt_idx = find_mt(flags, memory_types)?;
+                let mts = img.memory_types();
+                let mt_idx = best_mt_index(mts, mt)?;
                 img.bind_memory(mt_idx, dmabuf)
             }
             _ => Err(Error::NoSupport),
