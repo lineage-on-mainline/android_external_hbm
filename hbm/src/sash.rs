@@ -1478,28 +1478,27 @@ pub struct Memory {
 }
 
 impl Memory {
-    fn with_buffer(buf: &Buffer, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
-        let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf.handle);
-
-        let handle = Self::allocate_memory(&buf.device, buf.size, mt_idx, dedicated_info, dmabuf)?;
-        let mem = Self {
-            device: buf.device.clone(),
-            handle,
-        };
+    fn new(
+        device: Arc<Device>,
+        size: vk::DeviceSize,
+        mt_idx: u32,
+        dedicated_info: vk::MemoryDedicatedAllocateInfo,
+        dmabuf: Option<OwnedFd>,
+    ) -> Result<Self> {
+        let handle = Self::allocate_memory(&device, size, mt_idx, dedicated_info, dmabuf)?;
+        let mem = Self { device, handle };
 
         Ok(mem)
     }
 
+    fn with_buffer(buf: &Buffer, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
+        let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf.handle);
+        Self::new(buf.device.clone(), buf.size, mt_idx, dedicated_info, dmabuf)
+    }
+
     fn with_image(img: &Image, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(img.handle);
-
-        let handle = Self::allocate_memory(&img.device, img.size, mt_idx, dedicated_info, dmabuf)?;
-        let mem = Self {
-            device: img.device.clone(),
-            handle,
-        };
-
-        Ok(mem)
+        Self::new(img.device.clone(), img.size, mt_idx, dedicated_info, dmabuf)
     }
 
     fn allocate_memory(
@@ -1651,7 +1650,7 @@ impl Buffer {
         Ok(buf)
     }
 
-    pub fn with_size(
+    pub fn with_constraint(
         dev: Arc<Device>,
         buf_info: BufferInfo,
         size: vk::DeviceSize,
@@ -1820,7 +1819,7 @@ impl Image {
         img
     }
 
-    pub fn with_modifiers(
+    pub fn with_constraint(
         dev: Arc<Device>,
         img_info: ImageInfo,
         width: u32,

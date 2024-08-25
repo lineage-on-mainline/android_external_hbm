@@ -260,7 +260,8 @@ impl super::Backend for Backend {
     ) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let buf = sash::Buffer::with_size(self.device.clone(), buf_info, extent.size(), con)?;
+            let buf =
+                sash::Buffer::with_constraint(self.device.clone(), buf_info, extent.size(), con)?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
@@ -283,7 +284,7 @@ impl super::Backend for Backend {
                 }
             }
 
-            let img = sash::Image::with_modifiers(
+            let img = sash::Image::with_constraint(
                 self.device.clone(),
                 img_info,
                 extent.width(),
