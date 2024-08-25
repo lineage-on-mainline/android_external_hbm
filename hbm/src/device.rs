@@ -100,13 +100,15 @@ impl Device {
         Ok(class)
     }
 
-    pub fn modifiers<'a>(&self, class: &'a Class) -> Option<&'a Vec<Modifier>> {
+    pub fn modifiers<'a>(&self, class: &'a Class) -> &'a Vec<Modifier> {
+        static EMPTY: Vec<Modifier> = Vec::new();
+
         // MOD_INVALID indicates an implicit modifier internally, but it means there is no modifier
         // support to users
         if class.modifiers.iter().any(|m| m.is_invalid()) {
-            None
+            &EMPTY
         } else {
-            Some(&class.modifiers)
+            &class.modifiers
         }
     }
 

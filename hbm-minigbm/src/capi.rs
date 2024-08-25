@@ -646,10 +646,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
         _ => return -1,
     };
 
-    let mods = match dev.device.modifiers(class) {
-        Some(mods) => mods,
-        None => return 0,
-    };
+    let mods = dev.device.modifiers(class);
 
     c::mods_out(out_mods, mod_max, mods) as i32
 }
@@ -676,10 +673,7 @@ pub unsafe extern "C" fn hbm_device_supports_modifier(
         _ => return false,
     };
 
-    dev.device
-        .modifiers(class)
-        .map(|mods| mods.iter().any(|m| m.0 == modifier))
-        .unwrap_or(false)
+    dev.device.modifiers(class).iter().any(|m| m.0 == modifier)
 }
 
 /// Create a BO with a constraint.
