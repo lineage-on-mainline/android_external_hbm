@@ -76,6 +76,82 @@ pub enum Usage {
     Vulkan(vulkan::Usage),
 }
 
+// this is validated and must be opaque to users
+#[derive(Clone, Debug, Default)]
+pub struct Class {
+    // these are copied from user inputs
+    pub(crate) flags: Flags,
+    pub(crate) format: Format,
+    pub(crate) usage: Usage,
+
+    // These express backend limits.  When there are multiple backends, limits from all backends
+    // are merged.
+    pub(crate) max_extent: Extent,
+    // TODO this is treated as an allowlist, but we should support denylist as well
+    pub(crate) modifiers: Vec<Modifier>,
+    // None means unknown constraint, not without constraint
+    pub(crate) constraint: Option<Constraint>,
+
+    // this is set by Device
+    pub(crate) backend_index: usize,
+}
+
+impl Class {
+    pub(crate) fn new(desc: &Description) -> Self {
+        Self {
+            flags: desc.flags,
+            format: desc.format,
+            constraint: Some(Default::default()),
+            ..Default::default()
+        }
+    }
+
+    pub(crate) fn usage(mut self, usage: Usage) -> Self {
+        self.usage = usage;
+        self
+    }
+
+    pub(crate) fn max_extent(mut self, max_extent: Extent) -> Self {
+        self.max_extent = max_extent;
+        self
+    }
+
+    pub(crate) fn modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
+        self.modifiers = modifiers;
+        self
+    }
+
+    pub(crate) fn constraint(mut self, con: Constraint) -> Self {
+        self.constraint = Some(con);
+        self
+    }
+
+    pub(crate) fn backend_index(mut self, idx: usize) -> Self {
+        self.backend_index = idx;
+        self
+    }
+
+    pub(crate) fn is_buffer(&self) -> bool {
+        self.format.is_invalid()
+    }
+
+    pub(crate) fn validate(&self, extent: Extent) -> bool {
+        if self.is_buffer() {
+            let max_size = self.max_extent.size();
+            let size = extent.size();
+
+            (1..=max_size).contains(&size)
+        } else {
+            let max_width = self.max_extent.width();
+            let max_height = self.max_extent.height();
+            let width = extent.width();
+            let height = extent.height();
+
+            (1..=max_width).contains(&width) && (1..=max_height).contains(&height)
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct Extent(u32, u32);
 
@@ -212,82 +288,6 @@ impl Constraint {
 
     pub(crate) fn unpack(con: Option<Constraint>) -> (Size, Size, Size) {
         con.unwrap_or_default().to_tuple()
-    }
-}
-
-// this is validated and must be opaque to users
-#[derive(Clone, Debug, Default)]
-pub struct Class {
-    // these are copied from user inputs
-    pub(crate) flags: Flags,
-    pub(crate) format: Format,
-    pub(crate) usage: Usage,
-
-    // These express backend limits.  When there are multiple backends, limits from all backends
-    // are merged.
-    pub(crate) max_extent: Extent,
-    // TODO this is treated as an allowlist, but we should support denylist as well
-    pub(crate) modifiers: Vec<Modifier>,
-    // None means unknown constraint, not without constraint
-    pub(crate) constraint: Option<Constraint>,
-
-    // this is set by Device
-    pub(crate) backend_index: usize,
-}
-
-impl Class {
-    pub(crate) fn new(desc: Description) -> Self {
-        Self {
-            flags: desc.flags,
-            format: desc.format,
-            constraint: Some(Default::default()),
-            ..Default::default()
-        }
-    }
-
-    pub(crate) fn usage(mut self, usage: Usage) -> Self {
-        self.usage = usage;
-        self
-    }
-
-    pub(crate) fn max_extent(mut self, max_extent: Extent) -> Self {
-        self.max_extent = max_extent;
-        self
-    }
-
-    pub(crate) fn modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
-        self.modifiers = modifiers;
-        self
-    }
-
-    pub(crate) fn constraint(mut self, con: Constraint) -> Self {
-        self.constraint = Some(con);
-        self
-    }
-
-    pub(crate) fn backend_index(mut self, idx: usize) -> Self {
-        self.backend_index = idx;
-        self
-    }
-
-    pub(crate) fn is_buffer(&self) -> bool {
-        self.format.is_invalid()
-    }
-
-    pub(crate) fn validate(&self, extent: Extent) -> bool {
-        if self.is_buffer() {
-            let max_size = self.max_extent.size();
-            let size = extent.size();
-
-            (1..=max_size).contains(&size)
-        } else {
-            let max_width = self.max_extent.width();
-            let max_height = self.max_extent.height();
-            let width = extent.width();
-            let height = extent.height();
-
-            (1..=max_width).contains(&width) && (1..=max_height).contains(&height)
-        }
     }
 }
 
@@ -557,6 +557,33 @@ mod tests {
     }
 
     #[test]
+    fn class() {
+        let buf_desc = Description::new();
+        let buf_class = Class::new(&buf_desc).max_extent(Extent::new_1d(10));
+
+        assert!(!buf_class.validate(Extent::new_1d(0)));
+        assert!(buf_class.validate(Extent::new_1d(1)));
+
+        assert!(buf_class.validate(Extent::new_1d(9)));
+        assert!(buf_class.validate(Extent::new_1d(10)));
+        assert!(!buf_class.validate(Extent::new_1d(11)));
+
+        let img_desc = Description::new().format(formats::R8);
+        let img_class = Class::new(&img_desc).max_extent(Extent::new_2d(5, 10));
+
+        assert!(!img_class.validate(Extent::new_2d(0, 0)));
+        assert!(!img_class.validate(Extent::new_2d(5, 0)));
+        assert!(!img_class.validate(Extent::new_2d(0, 10)));
+        assert!(img_class.validate(Extent::new_2d(5, 1)));
+        assert!(img_class.validate(Extent::new_2d(1, 10)));
+
+        assert!(img_class.validate(Extent::new_2d(5, 10)));
+        assert!(!img_class.validate(Extent::new_2d(6, 10)));
+        assert!(!img_class.validate(Extent::new_2d(5, 11)));
+        assert!(!img_class.validate(Extent::new_2d(6, 11)));
+    }
+
+    #[test]
     fn extent() {
         for val in [42 as Size, (0x1234 as Size) << 30] {
             assert_eq!(Extent::new_1d(val).size(), val);
@@ -600,33 +627,6 @@ mod tests {
     }
 
     #[test]
-    fn class() {
-        let buf_desc = Description::new();
-        let buf_class = Class::new(buf_desc).max_extent(Extent::new_1d(10));
-
-        assert!(!buf_class.validate(Extent::new_1d(0)));
-        assert!(buf_class.validate(Extent::new_1d(1)));
-
-        assert!(buf_class.validate(Extent::new_1d(9)));
-        assert!(buf_class.validate(Extent::new_1d(10)));
-        assert!(!buf_class.validate(Extent::new_1d(11)));
-
-        let img_desc = Description::new().format(formats::R8);
-        let img_class = Class::new(img_desc).max_extent(Extent::new_2d(5, 10));
-
-        assert!(!img_class.validate(Extent::new_2d(0, 0)));
-        assert!(!img_class.validate(Extent::new_2d(5, 0)));
-        assert!(!img_class.validate(Extent::new_2d(0, 10)));
-        assert!(img_class.validate(Extent::new_2d(5, 1)));
-        assert!(img_class.validate(Extent::new_2d(1, 10)));
-
-        assert!(img_class.validate(Extent::new_2d(5, 10)));
-        assert!(!img_class.validate(Extent::new_2d(6, 10)));
-        assert!(!img_class.validate(Extent::new_2d(5, 11)));
-        assert!(!img_class.validate(Extent::new_2d(6, 11)));
-    }
-
-    #[test]
     fn constraint() {
         let con = Constraint::new();
         assert_eq!(con.to_tuple(), (1, 1, 1));
@@ -662,7 +662,7 @@ mod tests {
     fn layout() {
         let size = 10;
         let buf_desc = Description::new();
-        let buf_class = Class::new(buf_desc).max_extent(Extent::new_1d(size));
+        let buf_class = Class::new(&buf_desc).max_extent(Extent::new_1d(size));
         let mut buf_layout = Layout::new().size(size);
         assert_eq!(
             Layout::packed(&buf_class, Extent::new_1d(size), None).unwrap(),
@@ -682,7 +682,9 @@ mod tests {
         let img_desc = Description::new()
             .format(formats::R8)
             .modifier(formats::MOD_LINEAR);
-        let img_class = Class::new(img_desc).max_extent(Extent::new_2d(width, height));
+        let img_class = Class::new(&img_desc)
+            .max_extent(Extent::new_2d(width, height))
+            .modifiers(vec![formats::MOD_LINEAR]);
         let mut img_layout = Layout::new()
             .size((width * height) as Size)
             .modifier(formats::MOD_LINEAR)

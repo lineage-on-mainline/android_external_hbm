@@ -90,7 +90,7 @@ impl Device {
         };
 
         let idx = required_idx.unwrap_or(0);
-        let class = Class::new(desc)
+        let class = Class::new(&desc)
             .usage(usage[idx])
             .max_extent(max_extent)
             .modifiers(mods)

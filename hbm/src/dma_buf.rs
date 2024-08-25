@@ -68,7 +68,7 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
         return Err(Error::NoSupport);
     }
 
-    let class = Class::new(desc)
+    let class = Class::new(&desc)
         .usage(usage)
         .max_extent(Extent::max())
         .modifiers(vec![desc.modifier]);
