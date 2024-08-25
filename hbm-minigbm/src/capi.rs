@@ -287,24 +287,24 @@ mod c {
         flags
     }
 
-    pub fn usage(usage: u64) -> hbm::vulkan::Usage {
+    pub fn usage(c_usage: u64) -> hbm::vulkan::Usage {
         let mut vk_usage = hbm::vulkan::Usage::empty();
-        if (usage & HBM_USAGE_GPU_TRANSFER) > 0 {
+        if (c_usage & HBM_USAGE_GPU_TRANSFER) > 0 {
             vk_usage |= hbm::vulkan::Usage::TRANSFER;
         }
-        if (usage & HBM_USAGE_GPU_UNIFORM) > 0 {
+        if (c_usage & HBM_USAGE_GPU_UNIFORM) > 0 {
             vk_usage |= hbm::vulkan::Usage::UNIFORM;
         }
-        if (usage & HBM_USAGE_GPU_STORAGE) > 0 {
+        if (c_usage & HBM_USAGE_GPU_STORAGE) > 0 {
             vk_usage |= hbm::vulkan::Usage::STORAGE;
         }
-        if (usage & HBM_USAGE_GPU_SAMPLED) > 0 {
+        if (c_usage & HBM_USAGE_GPU_SAMPLED) > 0 {
             vk_usage |= hbm::vulkan::Usage::SAMPLED;
         }
-        if (usage & HBM_USAGE_GPU_COLOR) > 0 {
+        if (c_usage & HBM_USAGE_GPU_COLOR) > 0 {
             vk_usage |= hbm::vulkan::Usage::COLOR;
         }
-        if (usage & HBM_USAGE_GPU_SCANOUT_HACK) > 0 {
+        if (c_usage & HBM_USAGE_GPU_SCANOUT_HACK) > 0 {
             vk_usage |= hbm::vulkan::Usage::SCANOUT_HACK;
         }
 
@@ -571,17 +571,16 @@ pub unsafe extern "C" fn hbm_log_init(
 /// This function is always safe.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_device_create(dev: libc::dev_t, debug: bool) -> *mut hbm_device {
-    let backend = match hbm::vulkan::Builder::new()
+    let Ok(backend) = hbm::vulkan::Builder::new()
         .device_id(dev)
         .debug(debug)
         .build()
-    {
-        Ok(backend) => backend,
-        _ => return ptr::null_mut(),
+    else {
+        return ptr::null_mut();
     };
-    let device = match hbm::Builder::new().add_backend(backend).build() {
-        Ok(dev) => dev,
-        _ => return ptr::null_mut(),
+
+    let Ok(device) = hbm::Builder::new().add_backend(backend).build() else {
+        return ptr::null_mut();
     };
 
     let dev = CDevice {
@@ -641,9 +640,8 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
 
     // TODO is it possible to reduce lock scope?
     let mut class_cache = dev.class_cache.lock().unwrap();
-    let class = match dev.get_class(&mut class_cache, desc) {
-        Ok(class) => class,
-        _ => return -1,
+    let Ok(class) = dev.get_class(&mut class_cache, desc) else {
+        return -1;
     };
 
     let mods = dev.device.modifiers(class);
@@ -668,9 +666,8 @@ pub unsafe extern "C" fn hbm_device_supports_modifier(
     let desc = c::desc(desc);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
-    let class = match dev.get_class(&mut class_cache, desc) {
-        Ok(class) => class,
-        _ => return false,
+    let Ok(class) = dev.get_class(&mut class_cache, desc) else {
+        return false;
     };
 
     dev.device.modifiers(class).iter().any(|m| m.0 == modifier)
@@ -698,14 +695,12 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
     let con = c::con_optional(con);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
-    let class = match dev.get_class(&mut class_cache, desc) {
-        Ok(class) => class,
-        _ => return ptr::null_mut(),
+    let Ok(class) = dev.get_class(&mut class_cache, desc) else {
+        return ptr::null_mut();
     };
 
-    let bo = match hbm::Bo::with_constraint(dev.device.clone(), class, extent, con) {
-        Ok(bo) => bo,
-        _ => return ptr::null_mut(),
+    let Ok(bo) = hbm::Bo::with_constraint(dev.device.clone(), class, extent, con) else {
+        return ptr::null_mut();
     };
 
     c::bo_ret(bo)
@@ -735,14 +730,12 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
     let dmabuf = c::fd_borrow(dmabuf);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
-    let class = match dev.get_class(&mut class_cache, desc) {
-        Ok(class) => class,
-        _ => return ptr::null_mut(),
+    let Ok(class) = dev.get_class(&mut class_cache, desc) else {
+        return ptr::null_mut();
     };
 
-    let bo = match hbm::Bo::with_layout(dev.device.clone(), class, extent, layout, dmabuf) {
-        Ok(bo) => bo,
-        _ => return ptr::null_mut(),
+    let Ok(bo) = hbm::Bo::with_layout(dev.device.clone(), class, extent, layout, dmabuf) else {
+        return ptr::null_mut();
     };
 
     c::bo_ret(bo)
@@ -813,9 +806,8 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
     let bo = c::bo(bo);
     let name = c::str_optional(name);
 
-    let dmabuf = match bo.export_dma_buf(name) {
-        Ok(dmabuf) => dmabuf,
-        _ => return -1,
+    let Ok(dmabuf) = bo.export_dma_buf(name) else {
+        return -1;
     };
 
     c::fd_ret(dmabuf)
@@ -832,9 +824,8 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
 pub unsafe extern "C" fn hbm_bo_map(bo: *mut hbm_bo) -> *mut ffi::c_void {
     let bo = c::bo_mut(bo);
 
-    let mapping = match bo.map() {
-        Ok(mapping) => mapping,
-        _ => return ptr::null_mut(),
+    let Ok(mapping) = bo.map() else {
+        return ptr::null_mut();
     };
 
     mapping.ptr.as_ptr()
@@ -907,13 +898,12 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
     let in_sync_fd = c::fd_optional(in_sync_fd);
     let wait = out_sync_fd.is_null();
 
-    let sync_fd = bo.copy_buffer(src, copy, in_sync_fd, wait);
-    if sync_fd.is_err() {
+    let Ok(sync_fd) = bo.copy_buffer(src, copy, in_sync_fd, wait) else {
         return false;
-    }
+    };
 
     if !wait {
-        c::fd_out(out_sync_fd, sync_fd.unwrap());
+        c::fd_out(out_sync_fd, sync_fd);
     }
 
     true
@@ -950,13 +940,12 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     let in_sync_fd = c::fd_optional(in_sync_fd);
     let wait = out_sync_fd.is_null();
 
-    let sync_fd = bo.copy_buffer_image(src, copy, in_sync_fd, wait);
-    if sync_fd.is_err() {
+    let Ok(sync_fd) = bo.copy_buffer_image(src, copy, in_sync_fd, wait) else {
         return false;
-    }
+    };
 
     if !wait {
-        c::fd_out(out_sync_fd, sync_fd.unwrap());
+        c::fd_out(out_sync_fd, sync_fd);
     }
 
     true
