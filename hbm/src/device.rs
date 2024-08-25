@@ -7,7 +7,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 
 pub struct Device {
-    pub(crate) backends: Vec<Box<dyn Backend>>,
+    backends: Vec<Box<dyn Backend>>,
 }
 
 impl Device {
