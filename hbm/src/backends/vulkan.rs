@@ -40,18 +40,18 @@ fn get_usage(usage: super::Usage, valid_usage: Usage) -> Result<Usage> {
     Ok(usage)
 }
 
-fn get_buffer_info(desc: Description, usage: super::Usage) -> Result<sash::BufferInfo> {
+fn get_buffer_info(flags: ResourceFlags, usage: super::Usage) -> Result<sash::BufferInfo> {
     let valid_usage = Usage::TRANSFER | Usage::UNIFORM | Usage::STORAGE;
     let usage = get_usage(usage, valid_usage)?;
 
     let mut buf_flags = vk::BufferCreateFlags::empty();
     let mut buf_usage = vk::BufferUsageFlags::empty();
 
-    if desc.flags.contains(ResourceFlags::PROTECTED) {
+    if flags.contains(ResourceFlags::PROTECTED) {
         buf_flags |= vk::BufferCreateFlags::PROTECTED;
     }
 
-    if desc.flags.contains(ResourceFlags::COPY) || usage.contains(Usage::TRANSFER) {
+    if flags.contains(ResourceFlags::COPY) || usage.contains(Usage::TRANSFER) {
         buf_usage |= vk::BufferUsageFlags::TRANSFER_SRC | vk::BufferUsageFlags::TRANSFER_DST;
     }
     if usage.contains(Usage::UNIFORM) {
@@ -69,26 +69,30 @@ fn get_buffer_info(desc: Description, usage: super::Usage) -> Result<sash::Buffe
     let buf_info = sash::BufferInfo {
         flags: buf_flags,
         usage: buf_usage,
-        external: desc.flags.contains(ResourceFlags::EXTERNAL),
+        external: flags.contains(ResourceFlags::EXTERNAL),
     };
 
     Ok(buf_info)
 }
 
-fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageInfo> {
+fn get_image_info(
+    flags: ResourceFlags,
+    fmt: Format,
+    usage: super::Usage,
+) -> Result<sash::ImageInfo> {
     let valid_usage =
         Usage::TRANSFER | Usage::STORAGE | Usage::SAMPLED | Usage::COLOR | Usage::SCANOUT_HACK;
     let usage = get_usage(usage, valid_usage)?;
 
     let mut img_flags = vk::ImageCreateFlags::empty();
     let mut img_usage = vk::ImageUsageFlags::empty();
-    let (img_fmt, _) = formats::to_vk(desc.format)?;
+    let (img_fmt, _) = formats::to_vk(fmt)?;
 
-    if desc.flags.contains(ResourceFlags::PROTECTED) {
+    if flags.contains(ResourceFlags::PROTECTED) {
         img_flags |= vk::ImageCreateFlags::PROTECTED;
     }
 
-    if desc.flags.contains(ResourceFlags::COPY) || usage.contains(Usage::TRANSFER) {
+    if flags.contains(ResourceFlags::COPY) || usage.contains(Usage::TRANSFER) {
         img_usage |= vk::ImageUsageFlags::TRANSFER_SRC | vk::ImageUsageFlags::TRANSFER_DST;
     }
     if usage.contains(Usage::STORAGE) {
@@ -110,9 +114,8 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
         flags: img_flags,
         usage: img_usage,
         format: img_fmt,
-        modifier: desc.modifier,
-        external: desc.flags.contains(ResourceFlags::EXTERNAL),
-        no_compression: desc.flags.contains(ResourceFlags::NO_COMPRESSION),
+        external: flags.contains(ResourceFlags::EXTERNAL),
+        no_compression: flags.contains(ResourceFlags::NO_COMPRESSION),
         scanout_hack: usage.contains(Usage::SCANOUT_HACK),
     };
 
@@ -235,15 +238,15 @@ impl super::Backend for Backend {
 
     fn classify(&self, desc: Description, usage: super::Usage) -> Result<Class> {
         let class = if desc.is_buffer() {
-            let buf_info = get_buffer_info(desc, usage)?;
+            let buf_info = get_buffer_info(desc.flags, usage)?;
             let buf_props = self.device.buffer_properties(buf_info)?;
 
             Class::new(desc)
                 .usage(usage)
                 .max_extent(Extent::new_1d(buf_props.max_size))
         } else {
-            let img_info = get_image_info(desc, usage)?;
-            let img_props = self.device.image_properties(img_info)?;
+            let img_info = get_image_info(desc.flags, desc.format, usage)?;
+            let img_props = self.device.image_properties(img_info, desc.modifier)?;
 
             Class::new(desc)
                 .usage(usage)
@@ -260,14 +263,14 @@ impl super::Backend for Backend {
         extent: Extent,
         con: Option<Constraint>,
     ) -> Result<Handle> {
-        let handle = if class.description.is_buffer() {
-            let buf_info = get_buffer_info(class.description, class.usage)?;
+        let handle = if class.is_buffer() {
+            let buf_info = get_buffer_info(class.flags, class.usage)?;
             let buf =
                 sash::Buffer::with_constraint(self.device.clone(), buf_info, extent.size(), con)?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
-            let img_info = get_image_info(class.description, class.usage)?;
+            let img_info = get_image_info(class.flags, class.format, class.usage)?;
 
             let mut modifiers = &class.modifiers;
             let filtered_modifiers: Vec<Modifier>;
@@ -308,8 +311,8 @@ impl super::Backend for Backend {
         layout: Layout,
         dmabuf: Option<BorrowedFd>,
     ) -> Result<Handle> {
-        let handle = if class.description.is_buffer() {
-            let buf_info = get_buffer_info(class.description, class.usage)?;
+        let handle = if class.is_buffer() {
+            let buf_info = get_buffer_info(class.flags, class.usage)?;
             let buf = sash::Buffer::with_layout(
                 self.device.clone(),
                 buf_info,
@@ -320,7 +323,7 @@ impl super::Backend for Backend {
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
-            let img_info = get_image_info(class.description, class.usage)?;
+            let img_info = get_image_info(class.flags, class.format, class.usage)?;
             let img = sash::Image::with_layout(
                 self.device.clone(),
                 img_info,

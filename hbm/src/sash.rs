@@ -609,7 +609,6 @@ pub struct ImageInfo {
     pub flags: vk::ImageCreateFlags,
     pub usage: vk::ImageUsageFlags,
     pub format: vk::Format,
-    pub modifier: Modifier,
     pub external: bool,
     pub no_compression: bool,
     pub scanout_hack: bool,
@@ -944,7 +943,11 @@ impl Device {
         Ok(())
     }
 
-    pub fn image_properties(&self, img_info: ImageInfo) -> Result<ImageProperties> {
+    pub fn image_properties(
+        &self,
+        img_info: ImageInfo,
+        mut modifier: Modifier,
+    ) -> Result<ImageProperties> {
         if img_info.flags.contains(vk::ImageCreateFlags::PROTECTED)
             && !self.properties().protected_memory
         {
@@ -952,7 +955,6 @@ impl Device {
         }
 
         let mut compression = vk::ImageCompressionFlagsEXT::DEFAULT;
-        let mut modifier = img_info.modifier;
         if img_info.no_compression {
             if self.properties().image_compression_control {
                 compression = vk::ImageCompressionFlagsEXT::DISABLED;

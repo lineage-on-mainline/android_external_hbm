@@ -247,13 +247,11 @@ impl super::Backend for Backend {
         extent: Extent,
         con: Option<Constraint>,
     ) -> Result<Handle> {
-        let desc = &class.description;
-
-        assert!(!desc.is_buffer());
+        assert!(!class.is_buffer());
 
         let size = (extent.width(), extent.height());
-        let fmt = DrmFourcc::try_from(desc.format.0).or(Err(Error::NoSupport))?;
-        let fmt_class = formats::format_class(desc.format)?;
+        let fmt = DrmFourcc::try_from(class.format.0).or(Err(Error::NoSupport))?;
+        let fmt_class = formats::format_class(class.format)?;
         let bpp = (fmt_class.block_size[0] as u32) * 8;
 
         let buf = self.device.create_dumb_buffer(size, fmt, bpp)?;

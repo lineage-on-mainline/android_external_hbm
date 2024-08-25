@@ -219,7 +219,8 @@ impl Constraint {
 #[derive(Clone, Debug, Default)]
 pub struct Class {
     // these are copied from user inputs
-    pub(crate) description: Description,
+    pub(crate) flags: ResourceFlags,
+    pub(crate) format: Format,
     pub(crate) usage: Usage,
 
     // These express backend limits.  When there are multiple backends, limits from all backends
@@ -235,9 +236,10 @@ pub struct Class {
 }
 
 impl Class {
-    pub(crate) fn new(description: Description) -> Self {
+    pub(crate) fn new(desc: Description) -> Self {
         Self {
-            description,
+            flags: desc.flags,
+            format: desc.format,
             constraint: Some(Default::default()),
             ..Default::default()
         }
@@ -268,8 +270,12 @@ impl Class {
         self
     }
 
+    pub(crate) fn is_buffer(&self) -> bool {
+        self.format.is_invalid()
+    }
+
     pub(crate) fn validate(&self, extent: Extent) -> bool {
-        if self.description.is_buffer() {
+        if self.is_buffer() {
             let max_size = self.max_extent.size();
             let size = extent.size();
 
@@ -336,18 +342,17 @@ impl Layout {
     }
 
     pub(crate) fn packed(class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Self> {
-        let desc = &class.description;
-        let layout = if desc.is_buffer() {
+        let layout = if class.is_buffer() {
             let (_, _, size_align) = Constraint::unpack(con);
             let size = extent.size().next_multiple_of(size_align);
 
             Self::new().size(size)
         } else {
-            if !desc.modifier.is_linear() {
+            if !class.modifiers.iter().any(|m| m.is_linear()) {
                 return Err(Error::InvalidParam);
             }
 
-            formats::packed_layout(desc.format, extent.width(), extent.height(), con)?
+            formats::packed_layout(class.format, extent.width(), extent.height(), con)?
         };
 
         Ok(layout)

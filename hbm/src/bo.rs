@@ -53,8 +53,8 @@ impl Bo {
 
         Self {
             device,
-            flags: class.description.flags,
-            format: class.description.format,
+            flags: class.flags,
+            format: class.format,
             backend_index: class.backend_index,
             extent,
             handle,
