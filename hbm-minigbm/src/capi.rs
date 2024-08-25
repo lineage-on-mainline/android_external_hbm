@@ -861,7 +861,7 @@ pub unsafe extern "C" fn hbm_bo_unmap(bo: *mut hbm_bo) {
 pub unsafe extern "C" fn hbm_bo_flush(bo: *mut hbm_bo) {
     let bo = c::bo(bo);
 
-    let _ = bo.flush();
+    bo.flush();
 }
 
 /// Invalidate the mapping of a mapped BO.
@@ -873,7 +873,7 @@ pub unsafe extern "C" fn hbm_bo_flush(bo: *mut hbm_bo) {
 pub unsafe extern "C" fn hbm_bo_invalidate(bo: *mut hbm_bo) {
     let bo = c::bo(bo);
 
-    let _ = bo.invalidate();
+    bo.invalidate();
 }
 
 /// Performs a buffer-buffer copy between two BOs.

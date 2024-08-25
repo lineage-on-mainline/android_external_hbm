@@ -16,7 +16,7 @@ struct BoState {
     bound: bool,
 
     mapping: Option<Mapping>,
-    refcount: u32,
+    map_count: u32,
 }
 
 pub struct Bo {
@@ -48,7 +48,7 @@ impl Bo {
         let state = BoState {
             bound: false,
             mapping: None,
-            refcount: 0,
+            map_count: 0,
         };
 
         Self {
@@ -119,6 +119,21 @@ impl Bo {
         self.device.backend(self.backend_index)
     }
 
+    fn lock_state(&self) -> Result<MutexGuard<BoState>> {
+        let state = self.state.lock().unwrap();
+
+        if !state.bound {
+            return Err(Error::InvalidParam);
+        }
+
+        Ok(state)
+    }
+
+    fn is_bound(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        state.bound
+    }
+
     pub fn layout(&self) -> Layout {
         self.backend().layout(&self.handle)
     }
@@ -146,21 +161,6 @@ impl Bo {
         Ok(())
     }
 
-    fn is_bound(&self) -> bool {
-        let state = self.state.lock().unwrap();
-        state.bound
-    }
-
-    fn lock_state(&self) -> Result<MutexGuard<BoState>> {
-        let state = self.state.lock().unwrap();
-
-        if !state.bound {
-            return Err(Error::InvalidParam);
-        }
-
-        Ok(state)
-    }
-
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
         if !self.can_external() {
             return Err(Error::InvalidParam);
@@ -178,50 +178,45 @@ impl Bo {
 
         let mut state = self.lock_state()?;
 
-        if state.refcount > 0 {
-            state.refcount += 1;
-            return Ok(state.mapping.unwrap());
+        if state.map_count == 0 {
+            let mapping = self.backend().map(&self.handle)?;
+            state.mapping = Some(mapping);
+            state.map_count = 1;
+        } else {
+            state.map_count += 1;
         }
 
-        let mapping = self.backend().map(&self.handle)?;
-        state.mapping = Some(mapping);
-        state.refcount = 1;
-
-        Ok(mapping)
+        Ok(state.mapping.unwrap())
     }
 
     pub fn unmap(&mut self) {
         let mut state = self.lock_state().unwrap();
 
-        if state.refcount == 0 {
-            return;
-        }
-
-        state.refcount -= 1;
-        if state.refcount == 0 {
-            let mapping = state.mapping.take().unwrap();
-            self.backend().unmap(&self.handle, mapping);
+        match state.map_count {
+            0 => (),
+            1 => {
+                let mapping = state.mapping.take().unwrap();
+                self.backend().unmap(&self.handle, mapping);
+                state.map_count = 0;
+            }
+            _ => state.map_count -= 1,
         }
     }
 
-    pub fn flush(&self) -> Result<()> {
-        let state = self.lock_state()?;
+    pub fn flush(&self) {
+        let state = self.lock_state().unwrap();
 
-        if state.refcount == 0 {
-            return Err(Error::InvalidParam);
+        if state.map_count > 0 {
+            self.backend().flush(&self.handle);
         }
-
-        self.backend().flush(&self.handle)
     }
 
-    pub fn invalidate(&self) -> Result<()> {
-        let state = self.lock_state()?;
+    pub fn invalidate(&self) {
+        let state = self.lock_state().unwrap();
 
-        if state.refcount == 0 {
-            return Err(Error::InvalidParam);
+        if state.map_count > 0 {
+            self.backend().invalidate(&self.handle);
         }
-
-        self.backend().invalidate(&self.handle)
     }
 
     fn validate_copy(&self, src: &Bo) -> bool {

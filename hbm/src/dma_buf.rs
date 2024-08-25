@@ -192,14 +192,14 @@ pub fn unmap(_handle: &Handle, mapping: Mapping) {
 //
 // and abuse it for flush/invalidate.  These are not used in most setups anyway.
 
-pub fn flush(handle: &Handle) -> Result<()> {
+pub fn flush(handle: &Handle) {
     let dmabuf = handle.as_ref().dmabuf();
 
-    utils::dma_buf_sync(dmabuf, Access::ReadWrite, false)
+    let _ = utils::dma_buf_sync(dmabuf, Access::ReadWrite, false);
 }
 
-pub fn invalidate(handle: &Handle) -> Result<()> {
+pub fn invalidate(handle: &Handle) {
     let dmabuf = handle.as_ref().dmabuf();
 
-    utils::dma_buf_sync(dmabuf, Access::ReadWrite, true)
+    let _ = utils::dma_buf_sync(dmabuf, Access::ReadWrite, true);
 }

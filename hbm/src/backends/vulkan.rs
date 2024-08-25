@@ -397,14 +397,16 @@ impl super::Backend for Backend {
         }
     }
 
-    fn flush(&self, handle: &Handle) -> Result<()> {
-        let mem = get_memory(handle)?;
-        mem.flush(0, vk::WHOLE_SIZE)
+    fn flush(&self, handle: &Handle) {
+        if let Ok(mem) = get_memory(handle) {
+            mem.flush(0, vk::WHOLE_SIZE);
+        }
     }
 
-    fn invalidate(&self, handle: &Handle) -> Result<()> {
-        let mem = get_memory(handle)?;
-        mem.invalidate(0, vk::WHOLE_SIZE)
+    fn invalidate(&self, handle: &Handle) {
+        if let Ok(mem) = get_memory(handle) {
+            mem.invalidate(0, vk::WHOLE_SIZE);
+        }
     }
 
     fn copy_buffer(

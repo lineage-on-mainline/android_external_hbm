@@ -503,12 +503,12 @@ pub trait Backend: Send + Sync {
         dma_buf::unmap(handle, mapping)
     }
 
-    fn flush(&self, handle: &Handle) -> Result<()> {
-        dma_buf::flush(handle)
+    fn flush(&self, handle: &Handle) {
+        dma_buf::flush(handle);
     }
 
-    fn invalidate(&self, handle: &Handle) -> Result<()> {
-        dma_buf::invalidate(handle)
+    fn invalidate(&self, handle: &Handle) {
+        dma_buf::invalidate(handle);
     }
 
     fn copy_buffer(

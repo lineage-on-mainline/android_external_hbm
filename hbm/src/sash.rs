@@ -1589,6 +1589,19 @@ impl Memory {
         Ok(handle)
     }
 
+    pub fn export_dma_buf(&self) -> Result<OwnedFd> {
+        let fd_info = vk::MemoryGetFdInfoKHR::default()
+            .memory(self.handle)
+            .handle_type(self.device.properties().external_memory_type);
+
+        // SAFETY: good
+        let raw_fd = unsafe { self.device.dispatch.memory.get_memory_fd(&fd_info) }?;
+        // SAFETY: ok
+        let dmabuf = unsafe { OwnedFd::from_raw_fd(raw_fd) };
+
+        Ok(dmabuf)
+    }
+
     pub fn map(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<Mapping> {
         let flags = vk::MemoryMapFlags::empty();
 
@@ -1612,47 +1625,32 @@ impl Memory {
         unsafe { self.device.handle.unmap_memory(self.handle) };
     }
 
-    pub fn flush(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<()> {
+    pub fn flush(&self, offset: vk::DeviceSize, size: vk::DeviceSize) {
         let range = vk::MappedMemoryRange::default()
             .memory(self.handle)
             .offset(offset)
             .size(size);
 
         // SAFETY: ok
-        unsafe {
+        let _ = unsafe {
             self.device
                 .handle
                 .flush_mapped_memory_ranges(slice::from_ref(&range))
-        }
-        .map_err(Error::from)
+        };
     }
 
-    pub fn invalidate(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<()> {
+    pub fn invalidate(&self, offset: vk::DeviceSize, size: vk::DeviceSize) {
         let range = vk::MappedMemoryRange::default()
             .memory(self.handle)
             .offset(offset)
             .size(size);
 
         // SAFETY: ok
-        unsafe {
+        let _ = unsafe {
             self.device
                 .handle
                 .invalidate_mapped_memory_ranges(slice::from_ref(&range))
-        }
-        .map_err(Error::from)
-    }
-
-    pub fn export_dma_buf(&self) -> Result<OwnedFd> {
-        let fd_info = vk::MemoryGetFdInfoKHR::default()
-            .memory(self.handle)
-            .handle_type(self.device.properties().external_memory_type);
-
-        // SAFETY: good
-        let raw_fd = unsafe { self.device.dispatch.memory.get_memory_fd(&fd_info) }?;
-        // SAFETY: ok
-        let dmabuf = unsafe { OwnedFd::from_raw_fd(raw_fd) };
-
-        Ok(dmabuf)
+        };
     }
 }
 

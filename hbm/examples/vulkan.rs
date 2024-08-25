@@ -47,8 +47,8 @@ fn test_image(dev: Arc<hbm::Device>) {
         .unwrap();
 
     img_bo.map().unwrap();
-    img_bo.flush().unwrap();
-    img_bo.invalidate().unwrap();
+    img_bo.flush();
+    img_bo.invalidate();
     img_bo.unmap();
 
     let img_copy = hbm::CopyBufferImage {
@@ -107,8 +107,8 @@ fn test_buffer(dev: Arc<hbm::Device>) {
         .unwrap();
 
     buf_bo.map().unwrap();
-    buf_bo.flush().unwrap();
-    buf_bo.invalidate().unwrap();
+    buf_bo.flush();
+    buf_bo.invalidate();
     buf_bo.unmap();
 
     let buf_copy = hbm::CopyBuffer {

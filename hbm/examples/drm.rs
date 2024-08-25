@@ -55,8 +55,8 @@ fn main() {
         .unwrap();
 
     bo.map().unwrap();
-    bo.flush().unwrap();
-    bo.invalidate().unwrap();
+    bo.flush();
+    bo.invalidate();
     bo.unmap();
 }
 
