@@ -883,48 +883,44 @@ impl Device {
 
     fn has_image_support(
         &self,
-        flags: vk::ImageCreateFlags,
-        usage: vk::ImageUsageFlags,
-        external: bool,
+        img_info: &ImageInfo,
         compression: vk::ImageCompressionFlagsEXT,
-        scanout_hack: bool,
-        fmt: vk::Format,
         modifier: Modifier,
     ) -> Result<()> {
         let tiling = self.get_image_tiling(modifier);
 
         let mut comp_info = vk::ImageCompressionControlEXT::default().flags(compression);
-        let mut img_info = vk::PhysicalDeviceImageFormatInfo2::default()
-            .format(fmt)
+        let mut fmt_info = vk::PhysicalDeviceImageFormatInfo2::default()
+            .format(img_info.format)
             .ty(vk::ImageType::TYPE_2D)
             .tiling(tiling)
-            .usage(usage)
-            .flags(flags)
+            .usage(img_info.usage)
+            .flags(img_info.flags)
             .push_next(&mut comp_info);
 
         let mut external_info = vk::PhysicalDeviceExternalImageFormatInfo::default();
-        if external {
+        if img_info.external {
             external_info = external_info.handle_type(self.properties().external_memory_type);
-            img_info = img_info.push_next(&mut external_info);
+            fmt_info = fmt_info.push_next(&mut external_info);
         }
 
         let mut mod_info = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default();
         if tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
             mod_info = mod_info.drm_format_modifier(modifier.0);
-            img_info = img_info.push_next(&mut mod_info);
+            fmt_info = fmt_info.push_next(&mut mod_info);
         }
 
         let mut wsi_info = WsiImageCreateInfoMESA::default();
-        if scanout_hack && tiling != vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            img_info = img_info.push_next(&mut wsi_info);
+        if img_info.scanout_hack && tiling != vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
+            fmt_info = fmt_info.push_next(&mut wsi_info);
         }
 
         let mut comp_props = vk::ImageCompressionPropertiesEXT::default();
-        let mut img_props = vk::ImageFormatProperties2::default().push_next(&mut comp_props);
+        let mut fmt_props = vk::ImageFormatProperties2::default().push_next(&mut comp_props);
 
         let mut external_props = vk::ExternalImageFormatProperties::default();
-        if external {
-            img_props = img_props.push_next(&mut external_props)
+        if img_info.external {
+            fmt_props = fmt_props.push_next(&mut external_props)
         }
 
         // SAFETY: ok
@@ -932,12 +928,12 @@ impl Device {
             self.instance_handle()
                 .get_physical_device_image_format_properties2(
                     self.physical_device.handle,
-                    &img_info,
-                    &mut img_props,
+                    &fmt_info,
+                    &mut fmt_props,
                 )
         }?;
 
-        if external {
+        if img_info.external {
             can_export_import(external_props.external_memory_properties)?;
         }
 
@@ -1004,15 +1000,7 @@ impl Device {
                 }
 
                 if self
-                    .has_image_support(
-                        img_info.flags,
-                        img_info.usage,
-                        img_info.external,
-                        compression,
-                        img_info.scanout_hack,
-                        img_info.format,
-                        candidate,
-                    )
+                    .has_image_support(&img_info, compression, candidate)
                     .is_ok()
                 {
                     Some(candidate)

@@ -311,7 +311,7 @@ mod c {
         vk_usage
     }
 
-    pub fn mods_out(out_mods: *mut u64, mod_max: u32, mods: &Vec<hbm::Modifier>) -> u32 {
+    pub fn mods_out(out_mods: *mut u64, mod_max: u32, mods: &[hbm::Modifier]) -> u32 {
         let mut mod_count = mods.len() as u32;
         if mod_max == 0 {
             return mod_count;
@@ -324,7 +324,7 @@ mod c {
         // SAFETY: out_mods is large enough for mod_max modifiers
         let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_count as _) };
 
-        for (dst, src) in out_mods.iter_mut().zip(mods.into_iter()) {
+        for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
             *dst = src.0;
         }
 
