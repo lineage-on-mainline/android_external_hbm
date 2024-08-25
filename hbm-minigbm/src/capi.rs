@@ -634,19 +634,19 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     desc: *const hbm_description,
     mod_max: u32,
     out_mods: *mut u64,
-) -> i32 {
+) -> u32 {
     let dev = c::dev(dev);
     let desc = c::desc(desc);
 
     // TODO is it possible to reduce lock scope?
     let mut class_cache = dev.class_cache.lock().unwrap();
     let Ok(class) = dev.get_class(&mut class_cache, desc) else {
-        return -1;
+        return 0;
     };
 
     let mods = dev.device.modifiers(class);
 
-    c::mod_out(out_mods, mod_max, mods) as i32
+    c::mod_out(out_mods, mod_max, mods)
 }
 
 /// Queries modifier support for a BO description.

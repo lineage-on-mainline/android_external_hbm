@@ -123,9 +123,7 @@ test_image(struct hbm_device *dev)
         .modifier = DRM_FORMAT_MOD_LINEAR,
     };
 
-    const int mod_count = hbm_device_get_modifiers(dev, &img_desc, 0, NULL);
-    if (mod_count < 0)
-        die("failed to get image modifiers");
+    uint32_t mod_count = hbm_device_get_modifiers(dev, &img_desc, 0, NULL);
     if (mod_count > 0) {
         uint64_t *mods = malloc(sizeof(*mods) * mod_count);
         if (!mods)
@@ -144,9 +142,10 @@ test_image(struct hbm_device *dev)
         }
 
         free(mods);
+
+	if (!hbm_device_supports_modifier(dev, &img_desc, img_desc.modifier))
+		die("unexpected missing modifier support");
     }
-    if (!hbm_device_supports_modifier(dev, &img_desc, img_desc.modifier))
-        die("unexpected missing modifier support");
 
     const union hbm_extent img_extent = {
         .image = {
