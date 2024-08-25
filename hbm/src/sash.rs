@@ -521,7 +521,10 @@ impl PhysicalDevice {
                 );
             }
 
-            mods
+            // vk::ImageAspectFlags supports up to 4 memory planes
+            mods.into_iter()
+                .filter(|mod_props| mod_props.drm_format_modifier_plane_count <= 4)
+                .collect()
         } else {
             let linear_feats = props.format_properties.linear_tiling_features;
             let optimal_feats = props.format_properties.optimal_tiling_features;
@@ -1068,45 +1071,7 @@ impl Device {
             .collect()
     }
 
-    fn get_image_subresource_aspect(
-        &self,
-        tiling: vk::ImageTiling,
-        mem_plane_count: u32,
-        plane: u32,
-    ) -> Result<vk::ImageAspectFlags> {
-        let aspect = match tiling {
-            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => match plane {
-                0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-                1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-                2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-                3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
-                _ => return Err(Error::NoSupport),
-            },
-            // violate VUID-vkGetImageSubresourceLayout-image-07790 for vk::ImageTiling::OPTIMAL
-            vk::ImageTiling::LINEAR | vk::ImageTiling::OPTIMAL => match plane {
-                0 => {
-                    if mem_plane_count > 1 {
-                        vk::ImageAspectFlags::PLANE_0
-                    } else {
-                        vk::ImageAspectFlags::COLOR
-                    }
-                }
-                1 => vk::ImageAspectFlags::PLANE_1,
-                2 => vk::ImageAspectFlags::PLANE_2,
-                _ => return Err(Error::NoSupport),
-            },
-            _ => return Err(Error::NoSupport),
-        };
-
-        Ok(aspect)
-    }
-
-    fn get_image_layout(
-        &self,
-        handle: vk::Image,
-        tiling: vk::ImageTiling,
-        fmt: vk::Format,
-    ) -> Result<Layout> {
+    fn get_image_modifier(&self, handle: vk::Image, tiling: vk::ImageTiling) -> Result<Modifier> {
         let modifier = match tiling {
             vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => {
                 let mut mod_props = vk::ImageDrmFormatModifierPropertiesEXT::default();
@@ -1122,17 +1087,59 @@ impl Device {
             }
             vk::ImageTiling::LINEAR => formats::MOD_LINEAR,
             vk::ImageTiling::OPTIMAL => formats::MOD_INVALID,
-            _ => return Err(Error::NoSupport),
+            _ => unreachable!(),
         };
 
-        let mem_plane_count = self.memory_plane_count(fmt, modifier).unwrap();
+        Ok(modifier)
+    }
 
-        // note that size is not set here
+    fn get_image_subresource_aspect(
+        &self,
+        tiling: vk::ImageTiling,
+        mem_plane_count: u32,
+        plane: u32,
+    ) -> vk::ImageAspectFlags {
+        match tiling {
+            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => match plane {
+                0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                _ => unreachable!(),
+            },
+            // violate VUID-vkGetImageSubresourceLayout-image-07790 for vk::ImageTiling::OPTIMAL
+            vk::ImageTiling::LINEAR | vk::ImageTiling::OPTIMAL => match plane {
+                0 => {
+                    if mem_plane_count > 1 {
+                        vk::ImageAspectFlags::PLANE_0
+                    } else {
+                        vk::ImageAspectFlags::COLOR
+                    }
+                }
+                1 => vk::ImageAspectFlags::PLANE_1,
+                2 => vk::ImageAspectFlags::PLANE_2,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
+    }
+
+    fn get_image_layout(
+        &self,
+        handle: vk::Image,
+        tiling: vk::ImageTiling,
+        fmt: vk::Format,
+        modifier: Modifier,
+        size: vk::DeviceSize,
+    ) -> Layout {
+        let mem_plane_count = self.memory_plane_count(fmt, modifier).unwrap();
         let mut layout = Layout::new()
+            .size(size)
             .modifier(modifier)
             .plane_count(mem_plane_count);
+
         for plane in 0..mem_plane_count {
-            let aspect = self.get_image_subresource_aspect(tiling, mem_plane_count, plane)?;
+            let aspect = self.get_image_subresource_aspect(tiling, mem_plane_count, plane);
             let subres = vk::ImageSubresource::default().aspect_mask(aspect);
 
             // SAFETY: good
@@ -1142,7 +1149,7 @@ impl Device {
             layout.strides[plane as usize] = subres_layout.row_pitch;
         }
 
-        Ok(layout)
+        layout
     }
 
     fn get_pipeline_barrier_scope(&self, ty: PipelineBarrierType) -> PipelineBarrierScope {
@@ -1762,10 +1769,8 @@ impl Buffer {
         self.mt_mask = reqs.memory_type_bits;
     }
 
-    pub fn layout(&self) -> Result<Layout> {
-        let layout = Layout::new().size(self.size);
-
-        Ok(layout)
+    pub fn layout(&self) -> Layout {
+        Layout::new().size(self.size)
     }
 
     pub fn memory_types(&self) -> Vec<(u32, vk::MemoryPropertyFlags)> {
@@ -1829,6 +1834,7 @@ pub struct Image {
     tiling: vk::ImageTiling,
     format: vk::Format,
     format_plane_count: u32,
+    modifier: Modifier,
 
     size: vk::DeviceSize,
     mt_mask: u32,
@@ -1844,7 +1850,7 @@ impl Image {
         tiling: vk::ImageTiling,
         format: vk::Format,
         external: bool,
-    ) -> Self {
+    ) -> Result<Self> {
         let format_plane_count = device.format_plane_count(format);
         let mut img = Self {
             device,
@@ -1852,14 +1858,17 @@ impl Image {
             tiling,
             format,
             format_plane_count,
+            modifier: formats::MOD_INVALID,
             size: 0,
             mt_mask: 0,
             external,
             memory: None,
         };
+
+        img.modifier = img.device.get_image_modifier(img.handle, tiling)?;
         img.init_memory_requirements();
 
-        img
+        Ok(img)
     }
 
     pub fn with_constraint(
@@ -1873,7 +1882,7 @@ impl Image {
         let tiling = dev.get_image_tiling(modifiers[0]);
         let handle =
             Self::create_implicit_image(&dev, tiling, &img_info, width, height, modifiers)?;
-        let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external);
+        let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external)?;
 
         if let Some(con) = con {
             img.size = img.size.next_multiple_of(con.size_align);
@@ -1908,7 +1917,7 @@ impl Image {
                 slice::from_ref(&layout.modifier),
             )?
         };
-        let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external);
+        let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external)?;
 
         if img.size > layout.size {
             return Err(Error::InvalidParam);
@@ -2037,11 +2046,14 @@ impl Image {
         self.mt_mask = reqs.memory_type_bits;
     }
 
-    pub fn layout(&self) -> Result<Layout> {
-        let layout = self
-            .device
-            .get_image_layout(self.handle, self.tiling, self.format)?;
-        Ok(layout.size(self.size))
+    pub fn layout(&self) -> Layout {
+        self.device.get_image_layout(
+            self.handle,
+            self.tiling,
+            self.format,
+            self.modifier,
+            self.size,
+        )
     }
 
     pub fn memory_types(&self) -> Vec<(u32, vk::MemoryPropertyFlags)> {

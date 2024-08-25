@@ -382,8 +382,8 @@ impl super::Backend for Backend {
         let layout = match &handle.payload {
             HandlePayload::Buffer(buf) => buf.layout(),
             HandlePayload::Image(img) => img.layout(),
-            _ => Err(Error::InvalidParam),
-        }?;
+            _ => return Err(Error::InvalidParam),
+        };
 
         Ok(layout)
     }
