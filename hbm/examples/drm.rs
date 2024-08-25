@@ -24,7 +24,7 @@ fn main() {
     let mut bo = hbm::Bo::with_constraint(
         dev.clone(),
         &bo_class,
-        hbm::Extent::new_2d(bo_width, bo_height),
+        hbm::Extent::Image(bo_width, bo_height),
         None,
     )
     .unwrap();
@@ -46,7 +46,7 @@ fn main() {
     let mut bo2 = hbm::Bo::with_layout(
         dev.clone(),
         &bo_class,
-        hbm::Extent::new_2d(bo_width, bo_height),
+        hbm::Extent::Image(bo_width, bo_height),
         layout,
         None,
     )

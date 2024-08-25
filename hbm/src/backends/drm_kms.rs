@@ -235,7 +235,7 @@ impl super::Backend for Backend {
 
         let class = Class::new(&desc)
             .usage(usage)
-            .max_extent(Extent::new_2d(self.max_width, self.max_height))
+            .max_extent(Extent::Image(self.max_width, self.max_height))
             .modifiers(mods);
 
         Ok(class)

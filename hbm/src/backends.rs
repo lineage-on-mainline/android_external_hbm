@@ -65,10 +65,9 @@ impl Description {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Usage {
-    #[default]
     Unused,
     Default,
     #[cfg(feature = "drm")]
@@ -77,7 +76,7 @@ pub enum Usage {
 }
 
 // this is validated and must be opaque to users
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct Class {
     // these are copied from user inputs
     pub(crate) flags: Flags,
@@ -101,8 +100,11 @@ impl Class {
         Self {
             flags: desc.flags,
             format: desc.format,
+            usage: Usage::Default,
+            max_extent: Extent::max(desc.is_buffer()),
+            modifiers: Vec::new(),
             constraint: Some(Default::default()),
-            ..Default::default()
+            backend_index: 0,
         }
     }
 
@@ -152,60 +154,69 @@ impl Class {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct Extent(u32, u32);
+#[derive(Clone, Copy, Debug)]
+#[non_exhaustive]
+pub enum Extent {
+    Buffer(Size),
+    Image(u32, u32),
+}
 
 impl Extent {
-    // this feels like a bad idea...
-    pub fn new_1d(size: Size) -> Self {
-        let lo = size as u32;
-        let hi = (size >> 32) as u32;
-        Self(lo, hi)
+    pub(crate) fn max(is_buf: bool) -> Self {
+        if is_buf {
+            Self::Buffer(u64::MAX)
+        } else {
+            Self::Image(u32::MAX, u32::MAX)
+        }
     }
 
     pub(crate) fn size(&self) -> Size {
-        let lo = self.0 as u64;
-        let hi = self.1 as u64;
-        (hi << 32) | lo
-    }
-
-    pub fn new_2d(width: u32, height: u32) -> Self {
-        Self(width, height)
+        if let Extent::Buffer(size) = self {
+            *size
+        } else {
+            unreachable!();
+        }
     }
 
     pub(crate) fn width(&self) -> u32 {
-        self.0
+        if let Extent::Image(width, _) = self {
+            *width
+        } else {
+            unreachable!();
+        }
     }
 
     pub(crate) fn height(&self) -> u32 {
-        self.1
-    }
-
-    pub(crate) fn max() -> Self {
-        Self::new_2d(u32::MAX, u32::MAX)
-    }
-
-    pub(crate) fn is_empty(&self, is_1d: bool) -> bool {
-        if is_1d {
-            self.size() == 0
+        if let Extent::Image(_, height) = self {
+            *height
         } else {
-            self.0 == 0 || self.1 == 0
+            unreachable!();
         }
     }
 
-    pub(crate) fn intersect(&mut self, other: Extent, is_1d: bool) {
-        if is_1d {
-            if self.size() > other.size() {
-                *self = other;
-            }
-        } else {
-            if self.0 > other.0 {
-                self.0 = other.0;
-            }
-            if self.1 > other.1 {
-                self.1 = other.1;
-            }
+    pub(crate) fn is_empty(&self) -> bool {
+        match self {
+            Extent::Buffer(size) => *size == 0,
+            Extent::Image(width, height) => *width == 0 || *height == 0,
         }
+    }
+
+    pub(crate) fn intersect(&mut self, other: Extent) {
+        match self {
+            Extent::Buffer(size) => {
+                if *size > other.size() {
+                    *size = other.size();
+                }
+            }
+            Extent::Image(width, height) => {
+                if *width > other.width() {
+                    *width = other.width();
+                }
+                if *height > other.height() {
+                    *height = other.height();
+                }
+            }
+        };
     }
 }
 
@@ -559,68 +570,65 @@ mod tests {
     #[test]
     fn class() {
         let buf_desc = Description::new();
-        let buf_class = Class::new(&buf_desc).max_extent(Extent::new_1d(10));
+        let buf_class = Class::new(&buf_desc).max_extent(Extent::Buffer(10));
 
-        assert!(!buf_class.validate(Extent::new_1d(0)));
-        assert!(buf_class.validate(Extent::new_1d(1)));
+        assert!(!buf_class.validate(Extent::Buffer(0)));
+        assert!(buf_class.validate(Extent::Buffer(1)));
 
-        assert!(buf_class.validate(Extent::new_1d(9)));
-        assert!(buf_class.validate(Extent::new_1d(10)));
-        assert!(!buf_class.validate(Extent::new_1d(11)));
+        assert!(buf_class.validate(Extent::Buffer(9)));
+        assert!(buf_class.validate(Extent::Buffer(10)));
+        assert!(!buf_class.validate(Extent::Buffer(11)));
 
         let img_desc = Description::new().format(formats::R8);
-        let img_class = Class::new(&img_desc).max_extent(Extent::new_2d(5, 10));
+        let img_class = Class::new(&img_desc).max_extent(Extent::Image(5, 10));
 
-        assert!(!img_class.validate(Extent::new_2d(0, 0)));
-        assert!(!img_class.validate(Extent::new_2d(5, 0)));
-        assert!(!img_class.validate(Extent::new_2d(0, 10)));
-        assert!(img_class.validate(Extent::new_2d(5, 1)));
-        assert!(img_class.validate(Extent::new_2d(1, 10)));
+        assert!(!img_class.validate(Extent::Image(0, 0)));
+        assert!(!img_class.validate(Extent::Image(5, 0)));
+        assert!(!img_class.validate(Extent::Image(0, 10)));
+        assert!(img_class.validate(Extent::Image(5, 1)));
+        assert!(img_class.validate(Extent::Image(1, 10)));
 
-        assert!(img_class.validate(Extent::new_2d(5, 10)));
-        assert!(!img_class.validate(Extent::new_2d(6, 10)));
-        assert!(!img_class.validate(Extent::new_2d(5, 11)));
-        assert!(!img_class.validate(Extent::new_2d(6, 11)));
+        assert!(img_class.validate(Extent::Image(5, 10)));
+        assert!(!img_class.validate(Extent::Image(6, 10)));
+        assert!(!img_class.validate(Extent::Image(5, 11)));
+        assert!(!img_class.validate(Extent::Image(6, 11)));
     }
 
     #[test]
     fn extent() {
         for val in [42 as Size, (0x1234 as Size) << 30] {
-            assert_eq!(Extent::new_1d(val).size(), val);
+            assert_eq!(Extent::Buffer(val).size(), val);
         }
 
         for (w, h) in [(5, 10), (10, 5)] {
-            let extent = Extent::new_2d(w, h);
+            let extent = Extent::Image(w, h);
             assert_eq!(extent.width(), w);
             assert_eq!(extent.height(), h);
         }
 
-        let max = Extent::max();
-        assert_eq!(max.size(), u64::MAX);
-        assert_eq!(max.width(), u32::MAX);
-        assert_eq!(max.height(), u32::MAX);
+        let buf_max = Extent::max(true);
+        assert_eq!(buf_max.size(), u64::MAX);
 
-        let zero = Extent::default();
-        assert_eq!(zero.size(), 0);
-        assert_eq!(zero.width(), 0);
-        assert_eq!(zero.height(), 0);
+        let img_max = Extent::max(false);
+        assert_eq!(img_max.width(), u32::MAX);
+        assert_eq!(img_max.height(), u32::MAX);
 
-        assert!(zero.is_empty(true));
-        assert!(zero.is_empty(false));
-        assert!(Extent::new_2d(0, 1).is_empty(false));
-        assert!(Extent::new_2d(1, 0).is_empty(false));
-        assert!(!Extent::new_2d(1, 1).is_empty(false));
-        assert!(!Extent::new_1d(1).is_empty(true));
+        assert!(Extent::Buffer(0).is_empty());
+        assert!(!Extent::Buffer(1).is_empty());
+
+        assert!(Extent::Image(0, 1).is_empty());
+        assert!(Extent::Image(1, 0).is_empty());
+        assert!(!Extent::Image(1, 1).is_empty());
 
         for (v1, v2) in [(0, 10), (10, 0), (5, 10), (10, 5)] {
-            let mut extent = Extent::new_1d(v1);
-            extent.intersect(Extent::new_1d(v2), true);
+            let mut extent = Extent::Buffer(v1);
+            extent.intersect(Extent::Buffer(v2));
             assert_eq!(extent.size(), cmp::min(v1, v2));
         }
 
         for ((w1, h1), (w2, h2)) in [((5, 20), (15, 10)), ((0, 20), (15, 0))] {
-            let mut extent = Extent::new_2d(w1, h1);
-            extent.intersect(Extent::new_2d(w2, h2), false);
+            let mut extent = Extent::Image(w1, h1);
+            extent.intersect(Extent::Image(w2, h2));
             assert_eq!(extent.width(), cmp::min(w1, w2));
             assert_eq!(extent.height(), cmp::min(h1, h2));
         }
@@ -662,10 +670,10 @@ mod tests {
     fn layout() {
         let size = 10;
         let buf_desc = Description::new();
-        let buf_class = Class::new(&buf_desc).max_extent(Extent::new_1d(size));
+        let buf_class = Class::new(&buf_desc).max_extent(Extent::Buffer(size));
         let mut buf_layout = Layout::new().size(size);
         assert_eq!(
-            Layout::packed(&buf_class, Extent::new_1d(size), None).unwrap(),
+            Layout::packed(&buf_class, Extent::Buffer(size), None).unwrap(),
             buf_layout
         );
 
@@ -673,7 +681,7 @@ mod tests {
         let con = Constraint::new().size_align(size_align);
         buf_layout = buf_layout.size(size.next_multiple_of(size_align));
         assert_eq!(
-            Layout::packed(&buf_class, Extent::new_1d(size), Some(con)).unwrap(),
+            Layout::packed(&buf_class, Extent::Buffer(size), Some(con)).unwrap(),
             buf_layout
         );
 
@@ -683,7 +691,7 @@ mod tests {
             .format(formats::R8)
             .modifier(formats::MOD_LINEAR);
         let img_class = Class::new(&img_desc)
-            .max_extent(Extent::new_2d(width, height))
+            .max_extent(Extent::Image(width, height))
             .modifiers(vec![formats::MOD_LINEAR]);
         let mut img_layout = Layout::new()
             .size((width * height) as Size)
@@ -691,7 +699,7 @@ mod tests {
             .plane_count(1)
             .stride(0, width as Size);
         assert_eq!(
-            Layout::packed(&img_class, Extent::new_2d(width, height), None).unwrap(),
+            Layout::packed(&img_class, Extent::Image(width, height), None).unwrap(),
             img_layout
         );
 
@@ -705,7 +713,7 @@ mod tests {
         let aligned_size = (aligned_width * height as Size).next_multiple_of(size_align);
         img_layout = img_layout.size(aligned_size).stride(0, aligned_width);
         assert_eq!(
-            Layout::packed(&img_class, Extent::new_2d(width, height), Some(con)).unwrap(),
+            Layout::packed(&img_class, Extent::Image(width, height), Some(con)).unwrap(),
             img_layout
         );
 

@@ -15,7 +15,7 @@ fn test_image(dev: Arc<hbm::Device>) {
     let mut img_bo = hbm::Bo::with_constraint(
         dev.clone(),
         &img_class,
-        hbm::Extent::new_2d(img_width, img_height),
+        hbm::Extent::Image(img_width, img_height),
         None,
     )
     .unwrap();
@@ -37,7 +37,7 @@ fn test_image(dev: Arc<hbm::Device>) {
     let mut img_bo2 = hbm::Bo::with_layout(
         dev.clone(),
         &img_class,
-        hbm::Extent::new_2d(img_width, img_height),
+        hbm::Extent::Image(img_width, img_height),
         img_layout,
         None,
     )
@@ -66,7 +66,7 @@ fn test_image(dev: Arc<hbm::Device>) {
     let buf_class = dev.classify(buf_desc, slice::from_ref(&buf_usage)).unwrap();
     let buf_size = (img_width * img_height * 4) as u64;
     let mut buf_bo =
-        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
+        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::Buffer(buf_size), None)
             .unwrap();
     buf_bo.bind_memory(MemoryType::MAPPABLE, None).unwrap();
 
@@ -85,7 +85,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
 
     let buf_size = 13;
     let mut buf_bo =
-        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
+        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::Buffer(buf_size), None)
             .unwrap();
     buf_bo.bind_memory(MemoryType::MAPPABLE, None).unwrap();
 
@@ -96,7 +96,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
     let mut buf_bo2 = hbm::Bo::with_layout(
         dev.clone(),
         &buf_class,
-        hbm::Extent::new_1d(buf_size),
+        hbm::Extent::Buffer(buf_size),
         buf_layout,
         None,
     )
@@ -116,7 +116,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
         size: buf_size,
     };
     let mut buf_src =
-        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::new_1d(buf_size), None)
+        hbm::Bo::with_constraint(dev.clone(), &buf_class, hbm::Extent::Buffer(buf_size), None)
             .unwrap();
     buf_src.bind_memory(MemoryType::MAPPABLE, None).unwrap();
 

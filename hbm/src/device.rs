@@ -44,7 +44,7 @@ impl Device {
 
     fn multi_classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
         // call classify from all backends and merge the results
-        let mut max_extent = Extent::max();
+        let mut max_extent = Extent::max(desc.is_buffer());
         let mut mods: Option<HashSet<Modifier>> = None;
         let mut con = Constraint::new();
         let mut required_idx = None;
@@ -55,7 +55,7 @@ impl Device {
 
             let class = backend.classify(desc, usage)?;
 
-            max_extent.intersect(class.max_extent, desc.is_buffer());
+            max_extent.intersect(class.max_extent);
 
             if !desc.is_buffer() {
                 let backend_mods: HashSet<Modifier> = class.modifiers.into_iter().collect();
@@ -74,7 +74,7 @@ impl Device {
             }
         }
 
-        if max_extent.is_empty(desc.is_buffer()) {
+        if max_extent.is_empty() {
             return Err(Error::NoSupport);
         }
 

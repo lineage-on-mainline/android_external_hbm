@@ -233,14 +233,14 @@ impl super::Backend for Backend {
 
             Class::new(&desc)
                 .usage(usage)
-                .max_extent(Extent::new_1d(buf_props.max_size))
+                .max_extent(Extent::Buffer(buf_props.max_size))
         } else {
             let img_info = get_image_info(desc.flags, desc.format, usage)?;
             let img_props = self.device.image_properties(img_info, desc.modifier)?;
 
             Class::new(&desc)
                 .usage(usage)
-                .max_extent(Extent::new_2d(img_props.max_extent, img_props.max_extent))
+                .max_extent(Extent::Image(img_props.max_extent, img_props.max_extent))
                 .modifiers(img_props.modifiers)
         };
 

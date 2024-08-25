@@ -331,13 +331,20 @@ mod c {
         mod_count
     }
 
-    pub fn extent(extent: *const hbm_extent) -> hbm::Extent {
+    pub fn extent(extent: *const hbm_extent, fmt: u32) -> hbm::Extent {
         // SAFETY: extent is non-NULL
         let extent = unsafe { &*extent };
-        // SAFETY: we just need the raw bits
-        let size = unsafe { extent.buffer.size };
 
-        hbm::Extent::new_1d(size)
+        const DRM_FORMAT_INVALID: u32 = 0;
+        if fmt == DRM_FORMAT_INVALID {
+            // SAFETY: it's a buffer
+            let buf = unsafe { extent.buffer };
+            hbm::Extent::Buffer(buf.size)
+        } else {
+            // SAFETY: it's an image
+            let img = unsafe { extent.image };
+            hbm::Extent::Image(img.width, img.height)
+        }
     }
 
     pub fn con_optional(con: *const hbm_constraint) -> Option<hbm::Constraint> {
@@ -693,7 +700,7 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
 ) -> *mut hbm_bo {
     let dev = c::dev(dev);
     let desc = c::desc(desc);
-    let extent = c::extent(extent);
+    let extent = c::extent(extent, desc.format);
     let con = c::con_optional(con);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
@@ -729,7 +736,7 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
 ) -> *mut hbm_bo {
     let dev = c::dev(dev);
     let desc = c::desc(desc);
-    let extent = c::extent(extent);
+    let extent = c::extent(extent, desc.format);
     let layout = c::layout(layout);
     let dmabuf = c::fd_borrow(dmabuf);
 

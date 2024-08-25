@@ -70,7 +70,7 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
 
     let class = Class::new(&desc)
         .usage(usage)
-        .max_extent(Extent::max())
+        .max_extent(Extent::max(desc.is_buffer()))
         .modifiers(vec![desc.modifier]);
 
     Ok(class)
