@@ -5,7 +5,7 @@
 
 #include "hbm_minigbm.h"
 
-#include <drm/drm_fourcc.h>
+#include <drm_fourcc.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +45,7 @@ static void
 test_image_copy(struct hbm_bo *img_bo, struct hbm_bo *buf_bo, uint32_t width, uint32_t height)
 {
     const struct hbm_copy_buffer_image copy = {
+        .stride = width,
         .width = width,
         .height = height,
     };

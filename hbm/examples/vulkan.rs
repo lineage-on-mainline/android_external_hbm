@@ -52,7 +52,7 @@ fn test_image(dev: Arc<hbm::Device>) {
 
     let img_copy = hbm::CopyBufferImage {
         offset: 0,
-        stride: 0,
+        stride: (img_width * 4) as _,
         plane: 0,
         x: 0,
         y: 0,
