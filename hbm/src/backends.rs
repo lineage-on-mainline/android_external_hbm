@@ -335,7 +335,7 @@ impl Layout {
         self
     }
 
-    pub fn packed(class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Self> {
+    pub(crate) fn packed(class: &Class, extent: Extent, con: Option<Constraint>) -> Result<Self> {
         let desc = &class.description;
         let layout = if desc.is_buffer() {
             let (_, _, size_align) = Constraint::unpack(con);
@@ -353,7 +353,7 @@ impl Layout {
         Ok(layout)
     }
 
-    pub fn fit(&self, con: Option<Constraint>) -> bool {
+    pub(crate) fn fit(&self, con: Option<Constraint>) -> bool {
         if con.is_none() {
             return true;
         }
