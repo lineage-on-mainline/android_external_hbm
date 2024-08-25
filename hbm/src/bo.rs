@@ -101,6 +101,10 @@ impl Bo {
         self.format.is_invalid()
     }
 
+    fn can_external(&self) -> bool {
+        self.flags.contains(ResourceFlags::EXTERNAL)
+    }
+
     fn can_map(&self) -> bool {
         self.flags.contains(ResourceFlags::MAP)
     }
@@ -118,6 +122,10 @@ impl Bo {
     }
 
     pub fn bind_memory(&mut self, flags: MemoryFlags, dmabuf: Option<OwnedFd>) -> Result<()> {
+        if dmabuf.is_some() && !self.can_external() {
+            return Err(Error::InvalidParam);
+        }
+
         let mut state = self.state.lock().unwrap();
 
         if state.bound {
@@ -148,6 +156,10 @@ impl Bo {
     }
 
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
+        if !self.can_external() {
+            return Err(Error::InvalidParam);
+        }
+
         let _state = self.lock_state()?;
 
         self.backend().export_dma_buf(&self.handle, name)

@@ -118,7 +118,7 @@ static void
 test_image(struct hbm_device *dev)
 {
     const struct hbm_description img_desc = {
-        .flags = HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
+        .flags = HBM_RESOURCE_FLAG_EXTERNAL | HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
         .format = DRM_FORMAT_R8,
         .modifier = DRM_FORMAT_MOD_LINEAR,
     };
@@ -262,7 +262,7 @@ static void
 test_buffer(struct hbm_device *dev)
 {
     const struct hbm_description buf_desc = {
-        .flags = HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
+        .flags = HBM_RESOURCE_FLAG_EXTERNAL | HBM_RESOURCE_FLAG_MAP | HBM_RESOURCE_FLAG_COPY,
         .format = DRM_FORMAT_INVALID,
         .modifier = DRM_FORMAT_MOD_INVALID,
     };

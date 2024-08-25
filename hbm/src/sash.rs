@@ -595,6 +595,7 @@ impl PhysicalDevice {
 pub struct BufferInfo {
     pub flags: vk::BufferCreateFlags,
     pub usage: vk::BufferUsageFlags,
+    pub external: bool,
 }
 
 pub struct BufferProperties {
@@ -606,6 +607,7 @@ pub struct ImageInfo {
     pub usage: vk::ImageUsageFlags,
     pub format: vk::Format,
     pub modifier: Modifier,
+    pub external: bool,
     pub no_compression: bool,
     pub scanout_hack: bool,
 }
@@ -827,23 +829,25 @@ impl Device {
             return Err(Error::NoSupport);
         }
 
-        let external_info = vk::PhysicalDeviceExternalBufferInfo::default()
-            .flags(buf_info.flags)
-            .usage(buf_info.usage)
-            .handle_type(self.properties().external_memory_type);
-        let mut external_props = vk::ExternalBufferProperties::default();
+        if buf_info.external {
+            let external_info = vk::PhysicalDeviceExternalBufferInfo::default()
+                .flags(buf_info.flags)
+                .usage(buf_info.usage)
+                .handle_type(self.properties().external_memory_type);
+            let mut external_props = vk::ExternalBufferProperties::default();
 
-        // SAFETY: good
-        unsafe {
-            self.instance_handle()
-                .get_physical_device_external_buffer_properties(
-                    self.physical_device.handle,
-                    &external_info,
-                    &mut external_props,
-                );
+            // SAFETY: good
+            unsafe {
+                self.instance_handle()
+                    .get_physical_device_external_buffer_properties(
+                        self.physical_device.handle,
+                        &external_info,
+                        &mut external_props,
+                    );
+            }
+
+            can_export_import(external_props.external_memory_properties)?;
         }
-
-        can_export_import(external_props.external_memory_properties)?;
 
         let mut max_size = self.properties().max_buffer_size;
         if buf_info
@@ -878,6 +882,7 @@ impl Device {
         &self,
         flags: vk::ImageCreateFlags,
         usage: vk::ImageUsageFlags,
+        external: bool,
         compression: vk::ImageCompressionFlagsEXT,
         scanout_hack: bool,
         fmt: vk::Format,
@@ -885,8 +890,6 @@ impl Device {
     ) -> Result<()> {
         let tiling = self.get_image_tiling(modifier);
 
-        let mut external_info = vk::PhysicalDeviceExternalImageFormatInfo::default()
-            .handle_type(self.properties().external_memory_type);
         let mut comp_info = vk::ImageCompressionControlEXT::default().flags(compression);
         let mut img_info = vk::PhysicalDeviceImageFormatInfo2::default()
             .format(fmt)
@@ -894,25 +897,32 @@ impl Device {
             .tiling(tiling)
             .usage(usage)
             .flags(flags)
-            .push_next(&mut external_info)
             .push_next(&mut comp_info);
+
+        let mut external_info = vk::PhysicalDeviceExternalImageFormatInfo::default();
+        if external {
+            external_info = external_info.handle_type(self.properties().external_memory_type);
+            img_info = img_info.push_next(&mut external_info);
+        }
 
         let mut mod_info = vk::PhysicalDeviceImageDrmFormatModifierInfoEXT::default();
         if tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
             mod_info = mod_info.drm_format_modifier(modifier.0);
-            img_info = img_info.push_next(&mut mod_info)
+            img_info = img_info.push_next(&mut mod_info);
         }
 
         let mut wsi_info = WsiImageCreateInfoMESA::default();
         if scanout_hack && tiling != vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            img_info = img_info.push_next(&mut wsi_info)
+            img_info = img_info.push_next(&mut wsi_info);
         }
 
-        let mut external_props = vk::ExternalImageFormatProperties::default();
         let mut comp_props = vk::ImageCompressionPropertiesEXT::default();
-        let mut img_props = vk::ImageFormatProperties2::default()
-            .push_next(&mut external_props)
-            .push_next(&mut comp_props);
+        let mut img_props = vk::ImageFormatProperties2::default().push_next(&mut comp_props);
+
+        let mut external_props = vk::ExternalImageFormatProperties::default();
+        if external {
+            img_props = img_props.push_next(&mut external_props)
+        }
 
         // SAFETY: ok
         unsafe {
@@ -924,7 +934,9 @@ impl Device {
                 )
         }?;
 
-        can_export_import(external_props.external_memory_properties)?;
+        if external {
+            can_export_import(external_props.external_memory_properties)?;
+        }
 
         if !comp_props.image_compression_flags.contains(compression) {
             return Err(Error::NoSupport);
@@ -992,6 +1004,7 @@ impl Device {
                     .has_image_support(
                         img_info.flags,
                         img_info.usage,
+                        img_info.external,
                         compression,
                         img_info.scanout_hack,
                         img_info.format,
@@ -1483,9 +1496,11 @@ impl Memory {
         size: vk::DeviceSize,
         mt_idx: u32,
         dedicated_info: vk::MemoryDedicatedAllocateInfo,
+        external: bool,
         dmabuf: Option<OwnedFd>,
     ) -> Result<Self> {
-        let handle = Self::allocate_memory(&device, size, mt_idx, dedicated_info, dmabuf)?;
+        let handle =
+            Self::allocate_memory(&device, size, mt_idx, dedicated_info, external, dmabuf)?;
         let mem = Self { device, handle };
 
         Ok(mem)
@@ -1493,12 +1508,26 @@ impl Memory {
 
     fn with_buffer(buf: &Buffer, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().buffer(buf.handle);
-        Self::new(buf.device.clone(), buf.size, mt_idx, dedicated_info, dmabuf)
+        Self::new(
+            buf.device.clone(),
+            buf.size,
+            mt_idx,
+            dedicated_info,
+            buf.external,
+            dmabuf,
+        )
     }
 
     fn with_image(img: &Image, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<Self> {
         let dedicated_info = vk::MemoryDedicatedAllocateInfo::default().image(img.handle);
-        Self::new(img.device.clone(), img.size, mt_idx, dedicated_info, dmabuf)
+        Self::new(
+            img.device.clone(),
+            img.size,
+            mt_idx,
+            dedicated_info,
+            img.external,
+            dmabuf,
+        )
     }
 
     fn allocate_memory(
@@ -1506,15 +1535,19 @@ impl Memory {
         size: vk::DeviceSize,
         mt_idx: u32,
         mut dedicated_info: vk::MemoryDedicatedAllocateInfo,
+        external: bool,
         dmabuf: Option<OwnedFd>,
     ) -> Result<vk::DeviceMemory> {
-        let mut export_info = vk::ExportMemoryAllocateInfo::default()
-            .handle_types(dev.properties().external_memory_type);
         let mut mem_info = vk::MemoryAllocateInfo::default()
             .allocation_size(size)
             .memory_type_index(mt_idx)
-            .push_next(&mut export_info)
             .push_next(&mut dedicated_info);
+
+        let mut export_info = vk::ExportMemoryAllocateInfo::default();
+        if external {
+            export_info = export_info.handle_types(dev.properties().external_memory_type);
+            mem_info = mem_info.push_next(&mut export_info);
+        }
 
         // VUID-VkImportMemoryFdInfoKHR-fd-00668 seems bogus
         let mut raw_fd: RawFd = -1;
@@ -1631,18 +1664,20 @@ pub struct Buffer {
 
     size: vk::DeviceSize,
     mt_mask: u32,
+    external: bool,
 
     memory: Option<Memory>,
 }
 
 impl Buffer {
     fn new(device: Arc<Device>, buf_info: BufferInfo, size: vk::DeviceSize) -> Result<Self> {
-        let handle = Self::create_buffer(&device, buf_info, size)?;
+        let handle = Self::create_buffer(&device, &buf_info, size)?;
         let mut buf = Self {
             device,
             handle,
             size: 0,
             mt_mask: 0,
+            external: buf_info.external,
             memory: None,
         };
         buf.init_memory_requirements();
@@ -1689,16 +1724,21 @@ impl Buffer {
 
     fn create_buffer(
         dev: &Device,
-        buf_info: BufferInfo,
+        buf_info: &BufferInfo,
         size: vk::DeviceSize,
     ) -> Result<vk::Buffer> {
-        let mut external_info = vk::ExternalMemoryBufferCreateInfo::default()
-            .handle_types(dev.properties().external_memory_type);
-        let buf_info = vk::BufferCreateInfo::default()
+        let external = buf_info.external;
+
+        let mut buf_info = vk::BufferCreateInfo::default()
             .flags(buf_info.flags)
             .size(size)
-            .usage(buf_info.usage)
-            .push_next(&mut external_info);
+            .usage(buf_info.usage);
+
+        let mut external_info = vk::ExternalMemoryBufferCreateInfo::default();
+        if external {
+            external_info = external_info.handle_types(dev.properties().external_memory_type);
+            buf_info = buf_info.push_next(&mut external_info);
+        }
 
         // SAFETY: good
         let handle = unsafe { dev.handle.create_buffer(&buf_info, None) }?;
@@ -1792,6 +1832,7 @@ pub struct Image {
 
     size: vk::DeviceSize,
     mt_mask: u32,
+    external: bool,
 
     memory: Option<Memory>,
 }
@@ -1802,6 +1843,7 @@ impl Image {
         handle: vk::Image,
         tiling: vk::ImageTiling,
         format: vk::Format,
+        external: bool,
     ) -> Self {
         let format_plane_count = device.format_plane_count(format);
         let mut img = Self {
@@ -1812,6 +1854,7 @@ impl Image {
             format_plane_count,
             size: 0,
             mt_mask: 0,
+            external,
             memory: None,
         };
         img.init_memory_requirements();
@@ -1830,7 +1873,7 @@ impl Image {
         let tiling = dev.get_image_tiling(modifiers[0]);
         let handle =
             Self::create_implicit_image(&dev, tiling, &img_info, width, height, modifiers)?;
-        let mut img = Self::new(dev, handle, tiling, img_info.format);
+        let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external);
 
         if let Some(con) = con {
             img.size = img.size.next_multiple_of(con.size_align);
@@ -1865,7 +1908,7 @@ impl Image {
                 slice::from_ref(&layout.modifier),
             )?
         };
-        let mut img = Self::new(dev, handle, tiling, img_info.format);
+        let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external);
 
         if img.size > layout.size {
             return Err(Error::InvalidParam);
@@ -1928,6 +1971,7 @@ impl Image {
         height: u32,
         mut mod_info: T,
     ) -> Result<vk::Image> {
+        let external = img_info.external;
         let compression = if tiling == vk::ImageTiling::OPTIMAL && img_info.no_compression {
             vk::ImageCompressionFlagsEXT::DISABLED
         } else {
@@ -1941,8 +1985,6 @@ impl Image {
             depth: 1,
         };
 
-        let mut external_info = vk::ExternalMemoryImageCreateInfo::default()
-            .handle_types(dev.properties().external_memory_type);
         let mut img_info = vk::ImageCreateInfo::default()
             .flags(img_info.flags)
             .image_type(vk::ImageType::TYPE_2D)
@@ -1954,8 +1996,13 @@ impl Image {
             .tiling(tiling)
             .usage(img_info.usage)
             .initial_layout(vk::ImageLayout::UNDEFINED)
-            .push_next(&mut external_info)
             .push_next(&mut mod_info);
+
+        let mut external_info = vk::ExternalMemoryImageCreateInfo::default();
+        if external {
+            external_info = external_info.handle_types(dev.properties().external_memory_type);
+            img_info = img_info.push_next(&mut external_info);
+        }
 
         let mut comp_info = vk::ImageCompressionControlEXT::default();
         if compression != vk::ImageCompressionFlagsEXT::DEFAULT {
@@ -1965,7 +2012,7 @@ impl Image {
 
         let mut wsi_info = WsiImageCreateInfoMESA::default();
         if scanout_hack && tiling != vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            img_info = img_info.push_next(&mut wsi_info)
+            img_info = img_info.push_next(&mut wsi_info);
         }
 
         // SAFETY: ok

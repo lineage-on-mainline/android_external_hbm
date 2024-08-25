@@ -69,6 +69,7 @@ fn get_buffer_info(desc: Description, usage: super::Usage) -> Result<sash::Buffe
     let buf_info = sash::BufferInfo {
         flags: buf_flags,
         usage: buf_usage,
+        external: desc.flags.contains(ResourceFlags::EXTERNAL),
     };
 
     Ok(buf_info)
@@ -110,6 +111,7 @@ fn get_image_info(desc: Description, usage: super::Usage) -> Result<sash::ImageI
         usage: img_usage,
         format: img_fmt,
         modifier: desc.modifier,
+        external: desc.flags.contains(ResourceFlags::EXTERNAL),
         no_compression: desc.flags.contains(ResourceFlags::NO_COMPRESSION),
         scanout_hack: usage.contains(Usage::SCANOUT_HACK),
     };

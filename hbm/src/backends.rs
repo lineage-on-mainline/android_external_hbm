@@ -16,10 +16,11 @@ use std::os::fd::{BorrowedFd, OwnedFd};
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     pub struct ResourceFlags: u32 {
-        const MAP = 1 << 0;
-        const COPY = 1 << 1;
-        const PROTECTED = 1 << 2;
-        const NO_COMPRESSION = 1 << 3;
+        const EXTERNAL = 1 << 0;
+        const MAP = 1 << 1;
+        const COPY = 1 << 2;
+        const PROTECTED = 1 << 3;
+        const NO_COMPRESSION = 1 << 4;
     }
 }
 

@@ -26,14 +26,16 @@ pub type hbm_log_callback = Option<
     unsafe extern "C" fn(lv: hbm_log_level, msg: *const ffi::c_char, cb_data: *mut ffi::c_void),
 >;
 
+/// The BO can be exported/imported.
+pub const HBM_RESOURCE_FLAG_EXTERNAL: u32 = 1 << 0;
 /// The BO can be mapped.
-pub const HBM_RESOURCE_FLAG_MAP: u32 = 1 << 0;
+pub const HBM_RESOURCE_FLAG_MAP: u32 = 1 << 1;
 /// The BO can be copied to or copied from.
-pub const HBM_RESOURCE_FLAG_COPY: u32 = 1 << 1;
+pub const HBM_RESOURCE_FLAG_COPY: u32 = 1 << 2;
 /// The BO must be allocated from a protected heap.
-pub const HBM_RESOURCE_FLAG_PROTECTED: u32 = 1 << 2;
+pub const HBM_RESOURCE_FLAG_PROTECTED: u32 = 1 << 3;
 /// The BO must not be compressed.
-pub const HBM_RESOURCE_FLAG_NO_COMPRESSION: u32 = 1 << 3;
+pub const HBM_RESOURCE_FLAG_NO_COMPRESSION: u32 = 1 << 4;
 
 /// The BO can be used for GPU copies.
 pub const HBM_USAGE_GPU_TRANSFER: u64 = 1u64 << 0;
@@ -266,6 +268,9 @@ mod c {
 
     pub fn res_flags(res_flags: u32) -> hbm::ResourceFlags {
         let mut flags = hbm::ResourceFlags::empty();
+        if (res_flags & HBM_RESOURCE_FLAG_EXTERNAL) > 0 {
+            flags |= hbm::ResourceFlags::EXTERNAL;
+        }
         if (res_flags & HBM_RESOURCE_FLAG_MAP) > 0 {
             flags |= hbm::ResourceFlags::MAP;
         }
