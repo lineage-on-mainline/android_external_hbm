@@ -84,7 +84,12 @@ pub fn with_constraint(class: &Class, extent: Extent, con: Option<Constraint>) -
     Ok(handle)
 }
 
-pub fn with_layout(class: &Class, extent: Extent, layout: Layout) -> Result<Handle> {
+pub fn with_layout(
+    class: &Class,
+    extent: Extent,
+    layout: Layout,
+    _dmabuf: Option<BorrowedFd>,
+) -> Result<Handle> {
     let packed = Layout::packed(class, extent, None)?;
     if layout.size < packed.size
         || layout.modifier != packed.modifier
@@ -104,7 +109,7 @@ pub fn layout(handle: &Handle) -> Result<Layout> {
     Ok(layout)
 }
 
-pub fn memory_types(_handle: &Handle, _dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
+pub fn memory_types(_handle: &Handle) -> Vec<MemoryFlags> {
     vec![MemoryFlags::MAPPABLE]
 }
 

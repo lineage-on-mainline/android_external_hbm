@@ -80,13 +80,14 @@ impl Bo {
         class: &Class,
         extent: Extent,
         layout: Layout,
+        dmabuf: Option<BorrowedFd>,
     ) -> Result<Self> {
         if !class.validate(extent) {
             return Err(Error::InvalidParam);
         }
 
         let backend = device.backend(class.backend_index);
-        let handle = backend.with_layout(class, extent, layout)?;
+        let handle = backend.with_layout(class, extent, layout, dmabuf)?;
         let bo = Self::new(device, class, extent, handle);
 
         Ok(bo)
@@ -112,8 +113,8 @@ impl Bo {
         self.backend().layout(&self.handle)
     }
 
-    pub fn memory_types(&self, dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
-        self.backend().memory_types(&self.handle, dmabuf)
+    pub fn memory_types(&self) -> Vec<MemoryFlags> {
+        self.backend().memory_types(&self.handle)
     }
 
     pub fn bind_memory(&mut self, flags: MemoryFlags, dmabuf: Option<OwnedFd>) -> Result<()> {

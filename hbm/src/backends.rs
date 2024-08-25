@@ -467,8 +467,14 @@ pub trait Backend: Send + Sync {
         dma_buf::with_constraint(class, extent, con)
     }
 
-    fn with_layout(&self, class: &Class, extent: Extent, layout: Layout) -> Result<Handle> {
-        dma_buf::with_layout(class, extent, layout)
+    fn with_layout(
+        &self,
+        class: &Class,
+        extent: Extent,
+        layout: Layout,
+        dmabuf: Option<BorrowedFd>,
+    ) -> Result<Handle> {
+        dma_buf::with_layout(class, extent, layout, dmabuf)
     }
 
     fn free(&self, _handle: &Handle) {}
@@ -477,8 +483,8 @@ pub trait Backend: Send + Sync {
         dma_buf::layout(handle)
     }
 
-    fn memory_types(&self, handle: &Handle, dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
-        dma_buf::memory_types(handle, dmabuf)
+    fn memory_types(&self, handle: &Handle) -> Vec<MemoryFlags> {
+        dma_buf::memory_types(handle)
     }
 
     fn bind_memory(

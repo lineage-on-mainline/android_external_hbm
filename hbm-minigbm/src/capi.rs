@@ -727,11 +727,13 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
     desc: *const hbm_description,
     extent: *const hbm_extent,
     layout: *const hbm_layout,
+    dmabuf: i32,
 ) -> *mut hbm_bo {
     let dev = c::dev(dev);
     let desc = c::desc(desc);
     let extent = c::extent(extent);
     let layout = c::layout(layout);
+    let dmabuf = c::fd_borrow(dmabuf);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
     let class = match dev.get_class(&mut class_cache, desc) {
@@ -739,7 +741,7 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
         _ => return ptr::null_mut(),
     };
 
-    let bo = match hbm::Bo::with_layout(dev.device.clone(), class, extent, layout) {
+    let bo = match hbm::Bo::with_layout(dev.device.clone(), class, extent, layout, dmabuf) {
         Ok(bo) => bo,
         _ => return ptr::null_mut(),
     };
@@ -784,14 +786,12 @@ pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_lay
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_memory_types(
     bo: *mut hbm_bo,
-    dmabuf: i32,
     mt_max: u32,
     out_mts: *mut u32,
 ) -> u32 {
     let bo = c::bo(bo);
-    let dmabuf = c::fd_borrow(dmabuf);
 
-    let mts = bo.memory_types(dmabuf);
+    let mts = bo.memory_types();
 
     c::mem_flags_out(out_mts, mt_max, mts)
 }

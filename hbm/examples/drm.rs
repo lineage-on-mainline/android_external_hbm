@@ -48,6 +48,7 @@ fn main() {
         &bo_class,
         hbm::Extent::new_2d(bo_width, bo_height),
         layout,
+        None,
     )
     .unwrap();
     bo2.bind_memory(MemoryFlags::MAPPABLE, Some(dmabuf))

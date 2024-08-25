@@ -39,6 +39,7 @@ fn test_image(dev: Arc<hbm::Device>) {
         &img_class,
         hbm::Extent::new_2d(img_width, img_height),
         img_layout,
+        None,
     )
     .unwrap();
     img_bo2
@@ -97,6 +98,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
         &buf_class,
         hbm::Extent::new_1d(buf_size),
         buf_layout,
+        None,
     )
     .unwrap();
     buf_bo2

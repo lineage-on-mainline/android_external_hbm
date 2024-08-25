@@ -11,7 +11,7 @@ use crate::types::{Access, Error, Format, Mapping, Modifier, Result};
 use crate::utils;
 use ash::vk;
 use log::info;
-use std::os::fd::{AsFd, BorrowedFd, OwnedFd};
+use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::Arc;
 
 bitflags::bitflags! {
@@ -298,11 +298,22 @@ impl super::Backend for Backend {
         Ok(handle)
     }
 
-    fn with_layout(&self, class: &Class, extent: Extent, layout: Layout) -> Result<Handle> {
+    fn with_layout(
+        &self,
+        class: &Class,
+        extent: Extent,
+        layout: Layout,
+        dmabuf: Option<BorrowedFd>,
+    ) -> Result<Handle> {
         let handle = if class.description.is_buffer() {
             let buf_info = get_buffer_info(class.description, class.usage)?;
-            let buf =
-                sash::Buffer::with_layout(self.device.clone(), buf_info, extent.size(), layout)?;
+            let buf = sash::Buffer::with_layout(
+                self.device.clone(),
+                buf_info,
+                extent.size(),
+                layout,
+                dmabuf,
+            )?;
 
             Handle::new(HandlePayload::Buffer(buf))
         } else {
@@ -313,6 +324,7 @@ impl super::Backend for Backend {
                 extent.width(),
                 extent.height(),
                 layout,
+                dmabuf,
             )?;
 
             Handle::new(HandlePayload::Image(img))
@@ -321,10 +333,10 @@ impl super::Backend for Backend {
         Ok(handle)
     }
 
-    fn memory_types(&self, handle: &Handle, dmabuf: Option<BorrowedFd>) -> Vec<MemoryFlags> {
+    fn memory_types(&self, handle: &Handle) -> Vec<MemoryFlags> {
         let memory_types = match handle.payload {
-            HandlePayload::Buffer(ref buf) => buf.memory_types(dmabuf),
-            HandlePayload::Image(ref img) => img.memory_types(dmabuf),
+            HandlePayload::Buffer(ref buf) => buf.memory_types(),
+            HandlePayload::Image(ref img) => img.memory_types(),
             _ => Vec::new(),
         };
 
@@ -339,12 +351,12 @@ impl super::Backend for Backend {
     ) -> Result<()> {
         match handle.payload {
             HandlePayload::Buffer(ref mut buf) => {
-                let memory_types = buf.memory_types(dmabuf.as_ref().map(AsFd::as_fd));
+                let memory_types = buf.memory_types();
                 let mt_idx = find_mt(flags, memory_types)?;
                 buf.bind_memory(mt_idx, dmabuf)
             }
             HandlePayload::Image(ref mut img) => {
-                let memory_types = img.memory_types(dmabuf.as_ref().map(AsFd::as_fd));
+                let memory_types = img.memory_types();
                 let mt_idx = find_mt(flags, memory_types)?;
                 img.bind_memory(mt_idx, dmabuf)
             }
