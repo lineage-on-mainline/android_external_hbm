@@ -32,6 +32,17 @@ pub struct Bo {
     state: Mutex<BoState>,
 }
 
+fn merge_constraints(con: Option<Constraint>, other: Option<&Constraint>) -> Option<Constraint> {
+    if con.is_some() && other.is_some() {
+        con.map(|mut con| {
+            con.merge(other.cloned().unwrap());
+            con
+        })
+    } else {
+        con.or_else(|| other.cloned())
+    }
+}
+
 impl Bo {
     fn new(device: Arc<Device>, class: &Class, extent: Extent, handle: Handle) -> Self {
         let state = BoState {
@@ -61,14 +72,7 @@ impl Bo {
             return Err(Error::InvalidParam);
         }
 
-        let con = if con.is_some() && class.constraint.is_some() {
-            con.map(|mut c| {
-                c.merge(class.constraint.clone().unwrap());
-                c
-            })
-        } else {
-            con.or(class.constraint.clone())
-        };
+        let con = merge_constraints(con, class.constraint.as_ref());
 
         let backend = device.backend(class.backend_index);
         let handle = backend.with_constraint(class, extent, con)?;
