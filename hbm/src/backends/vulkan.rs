@@ -228,7 +228,7 @@ impl Backend {
 }
 
 impl super::Backend for Backend {
-    fn plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
+    fn memory_plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
         let (fmt, _) = formats::to_vk(fmt)?;
         self.device.memory_plane_count(fmt, modifier)
     }

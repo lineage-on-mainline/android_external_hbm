@@ -451,7 +451,7 @@ pub struct CopyBufferImage {
 }
 
 pub trait Backend: Send + Sync {
-    fn plane_count(&self, _fmt: Format, _modifier: Modifier) -> Result<u32> {
+    fn memory_plane_count(&self, _fmt: Format, _modifier: Modifier) -> Result<u32> {
         Err(Error::NoSupport)
     }
 

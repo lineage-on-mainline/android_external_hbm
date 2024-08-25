@@ -11,14 +11,15 @@ pub struct Device {
 }
 
 impl Device {
-    pub fn plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
+    pub fn memory_plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
         if fmt.is_invalid() || modifier.is_invalid() {
             return Err(Error::InvalidParam);
         }
 
         for backend in &self.backends {
-            if let Ok(count) = backend.plane_count(fmt, modifier) {
-                return Ok(count);
+            match backend.memory_plane_count(fmt, modifier) {
+                Err(Error::NoSupport) => (),
+                res => return res,
             }
         }
 
@@ -99,10 +100,6 @@ impl Device {
         Ok(class)
     }
 
-    pub(crate) fn backend(&self, idx: usize) -> &dyn Backend {
-        self.backends[idx].as_ref()
-    }
-
     pub fn modifiers<'a>(&self, class: &'a Class) -> Option<&'a Vec<Modifier>> {
         // MOD_INVALID indicates an implicit modifier internally, but it means there is no modifier
         // support to users
@@ -111,6 +108,10 @@ impl Device {
         } else {
             Some(&class.modifiers)
         }
+    }
+
+    pub(crate) fn backend(&self, idx: usize) -> &dyn Backend {
+        self.backends[idx].as_ref()
     }
 }
 

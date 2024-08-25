@@ -616,7 +616,7 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
     let dev = c::dev(dev);
 
     dev.device
-        .plane_count(hbm::Format(fmt), hbm::Modifier(modifier))
+        .memory_plane_count(hbm::Format(fmt), hbm::Modifier(modifier))
         .unwrap_or(0)
 }
 
