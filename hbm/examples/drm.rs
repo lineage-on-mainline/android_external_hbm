@@ -31,7 +31,7 @@ fn main() {
     bo.bind_memory(MemoryFlags::MAPPABLE, None).unwrap();
 
     let dmabuf = bo.export_dma_buf(Some("test")).unwrap();
-    let layout = bo.layout().unwrap();
+    let layout = bo.layout();
     println!(
         "bo size {}x{} alloc {} format {} modifier 0x{:x}",
         bo_width, bo_height, layout.size, bo_desc.format, layout.modifier.0,

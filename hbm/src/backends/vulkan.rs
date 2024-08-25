@@ -378,14 +378,12 @@ impl super::Backend for Backend {
         Ok(dmabuf)
     }
 
-    fn layout(&self, handle: &Handle) -> Result<Layout> {
-        let layout = match &handle.payload {
+    fn layout(&self, handle: &Handle) -> Layout {
+        match &handle.payload {
             HandlePayload::Buffer(buf) => buf.layout(),
             HandlePayload::Image(img) => img.layout(),
-            _ => return Err(Error::InvalidParam),
-        };
-
-        Ok(layout)
+            _ => unreachable!(),
+        }
     }
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {

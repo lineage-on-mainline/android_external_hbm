@@ -103,10 +103,8 @@ pub fn with_layout(
     Ok(handle)
 }
 
-pub fn layout(handle: &Handle) -> Result<Layout> {
-    let layout = handle.as_ref().layout;
-
-    Ok(layout)
+pub fn layout(handle: &Handle) -> Layout {
+    handle.as_ref().layout
 }
 
 pub fn memory_types(_handle: &Handle) -> Vec<MemoryFlags> {

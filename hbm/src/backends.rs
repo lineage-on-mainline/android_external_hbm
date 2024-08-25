@@ -474,7 +474,7 @@ pub trait Backend: Send + Sync {
 
     fn free(&self, _handle: &Handle) {}
 
-    fn layout(&self, handle: &Handle) -> Result<Layout> {
+    fn layout(&self, handle: &Handle) -> Layout {
         dma_buf::layout(handle)
     }
 

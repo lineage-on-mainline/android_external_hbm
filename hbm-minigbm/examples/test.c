@@ -166,8 +166,7 @@ test_image(struct hbm_device *dev)
         die("failed to export image dma-buf");
 
     struct hbm_layout img_layout;
-    if (!hbm_bo_layout(img_bo, &img_layout))
-        die("failed to get image layout");
+    hbm_bo_layout(img_bo, &img_layout);
 
     test_image_map(img_bo, img_extent.image.width, img_extent.image.height, img_layout.strides[0],
                    true);
@@ -287,8 +286,7 @@ test_buffer(struct hbm_device *dev)
         die("failed to export buffer dma-buf");
 
     struct hbm_layout buf_layout;
-    if (!hbm_bo_layout(buf_bo, &buf_layout))
-        die("failed to get buffer layout");
+    hbm_bo_layout(buf_bo, &buf_layout);
 
     test_buffer_map(buf_bo, buf_extent.buffer.size, true);
 

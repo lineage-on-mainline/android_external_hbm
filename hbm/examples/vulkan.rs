@@ -22,7 +22,7 @@ fn test_image(dev: Arc<hbm::Device>) {
     img_bo.bind_memory(MemoryFlags::MAPPABLE, None).unwrap();
 
     let img_dmabuf = img_bo.export_dma_buf(Some("img")).unwrap();
-    let img_layout = img_bo.layout().unwrap();
+    let img_layout = img_bo.layout();
     println!(
         "img size {}x{} alloc {} format {} modifier 0x{:x}",
         img_width, img_height, img_layout.size, img_desc.format, img_layout.modifier.0,
@@ -91,7 +91,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
     buf_bo.bind_memory(MemoryFlags::MAPPABLE, None).unwrap();
 
     let buf_dmabuf = buf_bo.export_dma_buf(Some("buf")).unwrap();
-    let buf_layout = buf_bo.layout().unwrap();
+    let buf_layout = buf_bo.layout();
     println!("buf size {} alloc {}", buf_size, buf_layout.size);
 
     let mut buf_bo2 = hbm::Bo::with_layout(

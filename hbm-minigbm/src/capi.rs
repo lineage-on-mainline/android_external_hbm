@@ -764,17 +764,11 @@ pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
 ///
 /// `bo` must be a valid BO.
 #[no_mangle]
-pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_layout) -> bool {
+pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_layout) {
     let bo = c::bo(bo);
 
-    let layout = match bo.layout() {
-        Ok(layout) => layout,
-        _ => return false,
-    };
-
+    let layout = bo.layout();
     c::layout_out(out_layout, layout);
-
-    true
 }
 
 /// Queries supported memory types of a BO.

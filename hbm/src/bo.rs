@@ -99,14 +99,6 @@ impl Bo {
         Ok(bo)
     }
 
-    fn backend(&self) -> &dyn Backend {
-        self.device.backend(self.backend_index)
-    }
-
-    fn is_buffer(&self) -> bool {
-        self.format.is_invalid()
-    }
-
     fn can_external(&self) -> bool {
         self.flags.contains(ResourceFlags::EXTERNAL)
     }
@@ -119,7 +111,15 @@ impl Bo {
         self.flags.contains(ResourceFlags::COPY)
     }
 
-    pub fn layout(&self) -> Result<Layout> {
+    fn is_buffer(&self) -> bool {
+        self.format.is_invalid()
+    }
+
+    fn backend(&self) -> &dyn Backend {
+        self.device.backend(self.backend_index)
+    }
+
+    pub fn layout(&self) -> Layout {
         self.backend().layout(&self.handle)
     }
 
