@@ -6,6 +6,7 @@ mod bo;
 mod device;
 mod dma_buf;
 mod formats;
+#[cfg(feature = "ash")]
 mod sash;
 mod types;
 mod utils;

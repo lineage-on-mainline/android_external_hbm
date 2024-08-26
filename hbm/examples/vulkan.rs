@@ -3,6 +3,7 @@ use hbm::{Flags, Format, MemoryType, Usage};
 use std::slice;
 use std::sync::Arc;
 
+#[cfg(feature = "ash")]
 fn test_image(dev: Arc<hbm::Device>) {
     let img_desc = hbm::Description::new()
         .flags(Flags::EXTERNAL | Flags::MAP | Flags::COPY)
@@ -78,6 +79,7 @@ fn test_image(dev: Arc<hbm::Device>) {
         .unwrap();
 }
 
+#[cfg(feature = "ash")]
 fn test_buffer(dev: Arc<hbm::Device>) {
     let buf_desc = hbm::Description::new().flags(Flags::EXTERNAL | Flags::MAP | Flags::COPY);
     let buf_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
@@ -123,6 +125,7 @@ fn test_buffer(dev: Arc<hbm::Device>) {
     buf_bo.copy_buffer(&buf_src, buf_copy, None, true).unwrap();
 }
 
+#[cfg(feature = "ash")]
 fn main() {
     env_logger::init();
 
@@ -131,4 +134,9 @@ fn main() {
 
     test_buffer(dev.clone());
     test_image(dev.clone());
+}
+
+#[cfg(not(feature = "ash"))]
+fn main() {
+    println!("ash feature disabled");
 }

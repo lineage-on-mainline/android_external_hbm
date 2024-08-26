@@ -10,7 +10,7 @@ keywords.workspace = true
 categories.workspace = true
 
 [dependencies]
-ash.workspace = true
+ash = { workspace = true, optional = true }
 bitflags.workspace = true
 drm = { workspace = true, optional = true }
 log.workspace = true
@@ -22,7 +22,8 @@ drm-fourcc.workspace = true
 env_logger.workspace = true
 
 [features]
-default = ["drm"]
+default = ["ash", "drm"]
+ash = ["dep:ash"]
 drm = ["dep:drm"]
 
 [lints]

@@ -5,10 +5,12 @@ pub mod dma_heap;
 #[cfg(feature = "drm")]
 pub mod drm_kms;
 pub mod udmabuf;
+#[cfg(feature = "ash")]
 pub mod vulkan;
 
 use super::dma_buf;
 use super::formats;
+#[cfg(feature = "ash")]
 use super::sash;
 use super::types::{Error, Format, Mapping, Modifier, Result, Size};
 use std::os::fd::{BorrowedFd, OwnedFd};
@@ -71,6 +73,7 @@ pub enum Usage {
     Unused,
     #[cfg(feature = "drm")]
     DrmKms(drm_kms::Usage),
+    #[cfg(feature = "ash")]
     Vulkan(vulkan::Usage),
 }
 
@@ -421,7 +424,9 @@ impl Layout {
 
 pub(crate) enum HandlePayload {
     DmaBuf(dma_buf::Resource),
+    #[cfg(feature = "ash")]
     Buffer(sash::Buffer),
+    #[cfg(feature = "ash")]
     Image(sash::Image),
 }
 

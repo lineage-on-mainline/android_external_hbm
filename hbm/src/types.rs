@@ -35,12 +35,14 @@ impl From<nix::Error> for Error {
     }
 }
 
+#[cfg(feature = "ash")]
 impl From<ash::LoadingError> for Error {
     fn from(_err: ash::LoadingError) -> Self {
         Self::LoadingError
     }
 }
 
+#[cfg(feature = "ash")]
 impl From<ash::vk::Result> for Error {
     fn from(_err: ash::vk::Result) -> Self {
         Self::LoadingError

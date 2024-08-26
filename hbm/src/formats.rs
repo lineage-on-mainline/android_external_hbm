@@ -3,6 +3,7 @@
 
 use super::backends::{Constraint, Layout};
 use super::types::{Error, Format, Modifier, Result, Size};
+#[cfg(feature = "ash")]
 use ash::vk;
 use std::str;
 
@@ -244,12 +245,14 @@ pub fn packed_layout(
     Ok(layout)
 }
 
+#[cfg(feature = "ash")]
 pub enum Swizzle {
     None,
     Rgb1,
     Bgra,
 }
 
+#[cfg(feature = "ash")]
 pub fn to_vk(fmt: Format) -> Result<(vk::Format, Swizzle)> {
     let mapped = match fmt.0 {
         consts::DRM_FORMAT_R8 => (vk::Format::R8_UNORM, Swizzle::None),
@@ -377,6 +380,7 @@ mod tests {
         assert_eq!(super::packed_layout(R8, w, h, Some(con)).unwrap(), layout);
     }
 
+    #[cfg(feature = "ash")]
     #[test]
     fn test_to_vk() {
         #[cfg(target_endian = "little")]
