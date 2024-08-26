@@ -67,10 +67,14 @@ impl Device {
 
             if let Some(backend_con) = class.constraint {
                 con.merge(backend_con);
-            } else if required_idx.is_none() {
-                required_idx = Some(idx);
-            } else {
-                return Err(Error::NoSupport);
+            }
+
+            if class.unknown_constraint {
+                if required_idx.is_none() {
+                    required_idx = Some(idx);
+                } else {
+                    return Err(Error::NoSupport);
+                }
             }
         }
 

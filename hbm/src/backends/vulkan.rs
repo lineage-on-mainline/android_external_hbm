@@ -234,6 +234,7 @@ impl super::Backend for Backend {
             Class::new(&desc)
                 .usage(usage)
                 .max_extent(Extent::Buffer(buf_props.max_size))
+                .unknown_constraint()
         } else {
             let img_info = get_image_info(desc.flags, desc.format, usage)?;
             let img_props = self.device.image_properties(img_info, desc.modifier)?;
@@ -242,6 +243,7 @@ impl super::Backend for Backend {
                 .usage(usage)
                 .max_extent(Extent::Image(img_props.max_extent, img_props.max_extent))
                 .modifiers(img_props.modifiers)
+                .unknown_constraint()
         };
 
         Ok(class)

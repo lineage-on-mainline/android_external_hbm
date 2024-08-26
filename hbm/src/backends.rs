@@ -85,10 +85,9 @@ pub struct Class {
     // These express backend limits.  When there are multiple backends, limits from all backends
     // are merged.
     pub(crate) max_extent: Extent,
-    // TODO this is treated as an allowlist, but we should support denylist as well
     pub(crate) modifiers: Vec<Modifier>,
-    // None means unknown constraint, not without constraint
     pub(crate) constraint: Option<Constraint>,
+    pub(crate) unknown_constraint: bool,
 
     // this is set by Device
     pub(crate) backend_index: usize,
@@ -102,7 +101,8 @@ impl Class {
             usage: Usage::Unused,
             max_extent: Extent::max(desc.is_buffer()),
             modifiers: Vec::new(),
-            constraint: Some(Default::default()),
+            constraint: None,
+            unknown_constraint: false,
             backend_index: 0,
         }
     }
@@ -124,6 +124,11 @@ impl Class {
 
     pub(crate) fn constraint(mut self, con: Constraint) -> Self {
         self.constraint = Some(con);
+        self
+    }
+
+    pub(crate) fn unknown_constraint(mut self) -> Self {
+        self.unknown_constraint = true;
         self
     }
 
