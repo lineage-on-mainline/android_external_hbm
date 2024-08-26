@@ -14,6 +14,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 struct BoState {
     bound: bool,
+    mt_mappable: bool,
 
     mapping: Option<Mapping>,
     map_count: u32,
@@ -47,6 +48,7 @@ impl Bo {
     fn new(device: Arc<Device>, class: &Class, extent: Extent, handle: Handle) -> Self {
         let state = BoState {
             bound: false,
+            mt_mappable: false,
             mapping: None,
             map_count: 0,
         };
@@ -157,6 +159,7 @@ impl Bo {
         backend.bind_memory(&mut self.handle, mt, dmabuf)?;
 
         state.bound = true;
+        state.mt_mappable = mt.contains(MemoryType::MAPPABLE);
 
         Ok(())
     }
@@ -177,6 +180,9 @@ impl Bo {
         }
 
         let mut state = self.lock_state()?;
+        if !state.mt_mappable {
+            return Err(Error::InvalidParam);
+        }
 
         if state.map_count == 0 {
             let mapping = self.backend().map(&self.handle)?;

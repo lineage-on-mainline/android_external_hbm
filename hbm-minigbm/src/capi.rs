@@ -841,7 +841,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
 
 /// Map a BO for direct CPU access.
 ///
-/// The BO must have `HBM_FLAG_MAP` and must have a memory bound.
+/// The BO must have `HBM_FLAG_MAP` and must have an `HBM_MEMORY_TYPE_MAPPABLE` memory bound.
 ///
 /// # Safety
 ///
