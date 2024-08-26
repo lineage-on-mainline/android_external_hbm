@@ -143,8 +143,8 @@ test_image(struct hbm_device *dev)
 
         free(mods);
 
-	if (!hbm_device_supports_modifier(dev, &img_desc, img_desc.modifier))
-		die("unexpected missing modifier support");
+        if (!hbm_device_has_modifier(dev, &img_desc, img_desc.modifier))
+            die("unexpected missing modifier support");
     }
 
     const union hbm_extent img_extent = {
