@@ -18,7 +18,7 @@ pub fn open(path: impl AsRef<Path>) -> Result<OwnedFd> {
 
     let raw_fd = fcntl::open(path.as_ref(), oflag, mode)?;
 
-    // SAFETY: raw_fd is a valid fd
+    // SAFETY: raw_fd is valid
     let owned_fd = unsafe { OwnedFd::from_raw_fd(raw_fd) };
 
     Ok(owned_fd)
@@ -39,7 +39,7 @@ pub fn mmap(fd: impl AsFd, size: Size, access: Access) -> Result<Mapping> {
 
     let len = num::NonZeroUsize::try_from(usize::try_from(size)?)?;
     let ptr =
-        // SAFETY: fd and size are valid
+        // SAFETY: clients assume the responsibility
         unsafe { sys::mman::mmap(None, len, prot, flags, fd, 0) }?;
     let mapping = Mapping { ptr, len };
 
@@ -47,7 +47,7 @@ pub fn mmap(fd: impl AsFd, size: Size, access: Access) -> Result<Mapping> {
 }
 
 pub fn munmap(mapping: Mapping) -> Result<()> {
-    // SAFETY: ptr and size are valid
+    // SAFETY: ptr and len are from sys::mman::mmap
     unsafe { sys::mman::munmap(mapping.ptr, mapping.len.into()) }?;
 
     Ok(())
@@ -137,10 +137,11 @@ mod dma_buf {
             false => DMA_BUF_SYNC_END,
         };
 
+        let dmabuf = dmabuf.as_fd().as_raw_fd();
         let arg = dma_buf_sync { flags };
         loop {
             // SAFETY: dmabuf and arg are valid
-            let res = unsafe { dma_buf_ioctl_sync(dmabuf.as_fd().as_raw_fd(), &arg) };
+            let res = unsafe { dma_buf_ioctl_sync(dmabuf, &arg) };
             match res {
                 Ok(_) => {
                     return Ok(());
@@ -156,12 +157,11 @@ mod dma_buf {
     }
 
     pub fn dma_buf_set_name(dmabuf: impl AsFd, name: &str) -> Result<()> {
+        let dmabuf = dmabuf.as_fd().as_raw_fd();
         let c_name = CString::new(name)?;
 
         // SAFETY: dmabuf and c_name are valid
-        unsafe {
-            dma_buf_ioctl_set_name(dmabuf.as_fd().as_raw_fd(), c_name.as_ptr() as *const u64)
-        }?;
+        unsafe { dma_buf_ioctl_set_name(dmabuf, c_name.as_ptr() as *const u64) }?;
 
         Ok(())
     }
@@ -216,10 +216,11 @@ mod dma_heap {
             heap_flags: 0,
         };
 
-        // SAFETY: both heap_fd and arg are valid
-        unsafe { dma_heap_ioctl_alloc(heap_fd.as_fd().as_raw_fd(), &mut arg) }?;
+        let heap_fd = heap_fd.as_fd().as_raw_fd();
+        // SAFETY: heap_fd and arg are valid
+        unsafe { dma_heap_ioctl_alloc(heap_fd, &mut arg) }?;
 
-        // SAFETY: arg.fd is a valid fd
+        // SAFETY: arg.fd is valid
         let dmabuf = unsafe { OwnedFd::from_raw_fd(arg.fd as i32) };
         Ok(dmabuf)
     }
@@ -272,10 +273,11 @@ mod udmabuf {
             size,
         };
 
-        // SAFETY: both udmabuf_fd and arg are valid
-        let raw_fd = unsafe { udmabuf_ioctl_create(udmabuf_fd.as_fd().as_raw_fd(), &arg) }?;
+        let udmabuf_fd = udmabuf_fd.as_fd().as_raw_fd();
+        // SAFETY: udmabuf_fd and arg are valid
+        let raw_fd = unsafe { udmabuf_ioctl_create(udmabuf_fd, &arg) }?;
 
-        // SAFETY: raw_fd is a valid fd
+        // SAFETY: raw_fd is valid
         let dmabuf = unsafe { OwnedFd::from_raw_fd(raw_fd) };
         Ok(dmabuf)
     }
@@ -357,11 +359,9 @@ mod drm {
             return Err(Error::InvalidParam);
         }
 
-        // SAFETY: blob is large enough to hold the header
-        let hdr = unsafe {
-            let hdr_ptr = blob.as_ptr() as *const drm_format_modifier_blob;
-            &*hdr_ptr
-        };
+        let hdr_ptr = blob.as_ptr() as *const drm_format_modifier_blob;
+        // SAFETY: hdr_ptr points to a valid header
+        let hdr = unsafe { &*hdr_ptr };
         if hdr.version != 1 {
             return Err(Error::InvalidParam);
         }
