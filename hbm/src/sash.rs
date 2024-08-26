@@ -3,14 +3,14 @@
 
 use super::backends::{Constraint, CopyBuffer, CopyBufferImage, Layout};
 use super::formats;
-use super::types::{Error, Mapping, Modifier, Result, Size};
+use super::types::{Error, Modifier, Result, Size};
 use super::utils;
 use ash::vk;
 use log::{debug, warn};
 use std::collections::HashMap;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
-use std::{cmp, ffi, num, ptr, slice, thread};
+use std::{cmp, ffi, ptr, slice, thread};
 
 const REQUIRED_API_VERSION: u32 = vk::API_VERSION_1_1;
 
@@ -1592,10 +1592,8 @@ impl Memory {
         Ok(dmabuf)
     }
 
-    pub fn map(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<Mapping> {
+    pub fn map(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<*mut ffi::c_void> {
         let flags = vk::MemoryMapFlags::empty();
-
-        let len = num::NonZeroUsize::try_from(usize::try_from(size)?)?;
 
         // SAFETY: good
         let ptr = unsafe {
@@ -1603,11 +1601,8 @@ impl Memory {
                 .handle
                 .map_memory(self.handle, offset, size, flags)
         }?;
-        let ptr = ptr::NonNull::new(ptr).unwrap();
 
-        let mapping = Mapping { ptr, len };
-
-        Ok(mapping)
+        Ok(ptr)
     }
 
     pub fn unmap(&self) {
@@ -1755,6 +1750,10 @@ impl Buffer {
         let reqs = reqs.memory_requirements;
         self.size = reqs.size;
         self.mt_mask = reqs.memory_type_bits;
+    }
+
+    pub fn size(&self) -> vk::DeviceSize {
+        self.size
     }
 
     pub fn layout(&self) -> Layout {
@@ -2032,6 +2031,10 @@ impl Image {
         let reqs = reqs.memory_requirements;
         self.size = reqs.size;
         self.mt_mask = reqs.memory_type_bits;
+    }
+
+    pub fn size(&self) -> vk::DeviceSize {
+        self.size
     }
 
     pub fn layout(&self) -> Layout {

@@ -13,6 +13,7 @@ use ash::vk;
 use log::info;
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::Arc;
+use std::{num, ptr};
 
 bitflags::bitflags! {
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
@@ -184,6 +185,16 @@ fn get_memory(handle: &Handle) -> Result<&sash::Memory> {
     };
 
     Ok(mem)
+}
+
+fn get_memory_size(handle: &Handle) -> Result<vk::DeviceSize> {
+    let size = match &handle.payload {
+        HandlePayload::Buffer(buf) => buf.size(),
+        HandlePayload::Image(img) => img.size(),
+        _ => return Err(Error::NoSupport),
+    };
+
+    Ok(size)
 }
 
 fn get_buffer(handle: &Handle) -> Result<&sash::Buffer> {
@@ -385,7 +396,14 @@ impl super::Backend for Backend {
 
     fn map(&self, handle: &Handle) -> Result<Mapping> {
         let mem = get_memory(handle)?;
-        mem.map(0, vk::WHOLE_SIZE)
+        let size = get_memory_size(handle)?;
+
+        let len = num::NonZeroUsize::try_from(usize::try_from(size)?)?;
+        let ptr = mem.map(0, size)?;
+        let ptr = ptr::NonNull::new(ptr).unwrap();
+        let mapping = Mapping { ptr, len };
+
+        Ok(mapping)
     }
 
     fn unmap(&self, handle: &Handle, _mapping: Mapping) {
