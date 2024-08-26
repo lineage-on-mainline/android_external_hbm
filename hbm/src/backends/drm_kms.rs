@@ -45,18 +45,6 @@ pub fn open_drm_primary_device(
     Err(Error::NoSupport)
 }
 
-pub fn decode_in_formats(table: &mut HashMap<Format, Vec<Modifier>>, data: &[u8]) {
-    if let Ok(iter) = utils::drm_parse_in_formats_blob(data) {
-        for (modifier, format) in iter {
-            let modifiers = table.entry(Format(format)).or_default();
-
-            if !modifiers.iter().any(|m| m.0 == modifier) {
-                modifiers.push(Modifier(modifier));
-            }
-        }
-    }
-}
-
 fn get_drm_usage(usage: super::Usage) -> Result<Usage> {
     let usage = match usage {
         super::Usage::DrmKms(usage) => usage,
@@ -70,24 +58,6 @@ fn get_drm_usage(usage: super::Usage) -> Result<Usage> {
     Ok(usage)
 }
 
-fn get_supported_modifiers(
-    table: &HashMap<Format, Vec<Modifier>>,
-    format: Format,
-    modifier: Modifier,
-) -> Result<Vec<Modifier>> {
-    let mods = table.get(&format).ok_or(Error::NoSupport)?;
-
-    if modifier.is_invalid() {
-        Ok(mods.clone())
-    } else {
-        if !mods.iter().any(|&m| m == modifier) {
-            return Err(Error::NoSupport);
-        }
-
-        Ok(vec![modifier])
-    }
-}
-
 struct Device(OwnedFd);
 
 impl AsFd for Device {
@@ -98,14 +68,16 @@ impl AsFd for Device {
 impl DrmDevice for Device {}
 impl DrmControlDevice for Device {}
 
+type FormatTable = HashMap<Format, Vec<Modifier>>;
+
 pub struct Backend {
     device: Device,
     alloc_only: bool,
 
     max_width: u32,
     max_height: u32,
-    overlay_formats: HashMap<Format, Vec<Modifier>>,
-    cursor_formats: HashMap<Format, Vec<Modifier>>,
+    overlay_formats: FormatTable,
+    cursor_formats: FormatTable,
 }
 
 impl Backend {
@@ -132,9 +104,9 @@ impl Backend {
 
         self.init_max_size()?;
 
-        let res = self.device.plane_handles()?;
-        for plane_handle in res {
-            self.init_plane(plane_handle)?;
+        let planes = self.device.plane_handles()?;
+        for plane in planes {
+            self.init_plane(plane)?;
         }
 
         Ok(())
@@ -163,58 +135,96 @@ impl Backend {
     fn init_plane(&mut self, plane: plane::Handle) -> Result<()> {
         let info = self.device.get_plane(plane)?;
 
-        let mut plane_type = None;
-        let mut in_formats = None;
+        let mut ty = None;
+        let mut in_fmts = None;
 
         let props = self.device.get_properties(info.handle())?;
         for (id, val) in props {
-            let prop = match self.device.get_property(id) {
-                Ok(prop) => prop,
-                _ => continue,
+            let Ok(prop) = self.device.get_property(id) else {
+                continue;
             };
 
             let name = prop.name().to_str().unwrap();
             match prop.value_type() {
                 drm::control::property::ValueType::Enum(_) => {
                     if name == "type" {
-                        plane_type = Some(val);
+                        ty = Some(val);
                     }
                 }
                 drm::control::property::ValueType::Blob => {
                     if name == "IN_FORMATS" {
-                        in_formats = Some(self.device.get_property_blob(val)?);
+                        let blob = self.device.get_property_blob(val)?;
+                        in_fmts = Some(blob);
                     }
                 }
-                _ => {}
+                _ => (),
             }
-            if plane_type.is_some() && in_formats.is_some() {
+            if ty.is_some() && in_fmts.is_some() {
                 break;
             }
         }
 
-        if plane_type.is_none() {
-            return Ok(());
+        if let Some(ty) = ty {
+            self.init_plane_formats(info, ty, in_fmts);
         }
 
-        let plane_type = plane_type.unwrap();
-        let table = if plane_type == drm::control::PlaneType::Cursor as u64 {
+        Ok(())
+    }
+
+    fn init_plane_formats(&mut self, info: plane::Info, ty: u64, in_fmts: Option<Vec<u8>>) {
+        let fmts = if ty == drm::control::PlaneType::Cursor as u64 {
             &mut self.cursor_formats
         } else {
             &mut self.overlay_formats
         };
 
-        if let Some(data) = in_formats {
-            decode_in_formats(table, &data);
+        if let Some(in_fmts) = in_fmts {
+            let Ok(iter) = utils::drm_parse_in_formats_blob(&in_fmts) else {
+                return;
+            };
+
+            for (modifier, fmt) in iter {
+                let mods = fmts.entry(Format(fmt)).or_default();
+
+                if !mods.iter().any(|m| m.0 == modifier) {
+                    mods.push(Modifier(modifier));
+                }
+            }
         } else {
             for fmt in info.formats() {
-                table
-                    .entry(Format(*fmt))
-                    .or_default()
-                    .push(formats::MOD_INVALID);
+                fmts.insert(
+                    Format(*fmt),
+                    vec![formats::MOD_LINEAR, formats::MOD_INVALID],
+                );
             }
         }
+    }
 
-        Ok(())
+    fn get_supported_modifiers(
+        &self,
+        usage: Usage,
+        fmt: Format,
+        modifier: Modifier,
+    ) -> Result<Vec<Modifier>> {
+        let fmts = if usage.contains(Usage::CURSOR) {
+            &self.cursor_formats
+        } else {
+            &self.overlay_formats
+        };
+
+        let mods = fmts.get(&fmt).ok_or(Error::NoSupport)?;
+
+        let mods = if modifier.is_invalid() {
+            mods.clone()
+        } else {
+            if !mods.iter().any(|m| *m == modifier) {
+                return Err(Error::NoSupport);
+            }
+
+            vec![modifier]
+        };
+
+        Ok(mods)
     }
 }
 
@@ -225,14 +235,7 @@ impl super::Backend for Backend {
         }
 
         let drm_usage = get_drm_usage(usage)?;
-
-        let table = if drm_usage.contains(Usage::OVERLAY) {
-            &self.overlay_formats
-        } else {
-            &self.cursor_formats
-        };
-        let mods = get_supported_modifiers(table, desc.format, desc.modifier)?;
-
+        let mods = self.get_supported_modifiers(drm_usage, desc.format, desc.modifier)?;
         let class = Class::new(&desc)
             .usage(usage)
             .max_extent(Extent::Image(self.max_width, self.max_height))
@@ -249,18 +252,19 @@ impl super::Backend for Backend {
     ) -> Result<Handle> {
         assert!(!class.is_buffer());
 
+        let fmt_class = formats::format_class(class.format)?;
         let size = (extent.width(), extent.height());
         let fmt = DrmFourcc::try_from(class.format.0).or(Err(Error::NoSupport))?;
-        let fmt_class = formats::format_class(class.format)?;
         let bpp = (fmt_class.block_size[0] as u32) * 8;
 
         let buf = self.device.create_dumb_buffer(size, fmt, bpp)?;
         let pitch = buf.pitch();
+
         let dmabuf = self
             .device
-            .buffer_to_prime_fd(buf.handle(), drm::RDWR | drm::CLOEXEC)?;
-        // TODO impl Drop, otherwise it leaks if the export above fails
-        self.device.destroy_dumb_buffer(buf)?;
+            .buffer_to_prime_fd(buf.handle(), drm::RDWR | drm::CLOEXEC);
+        let _ = self.device.destroy_dumb_buffer(buf);
+        let dmabuf = dmabuf?;
 
         let layout = Layout::new()
             .size((extent.height() * pitch) as Size)
@@ -271,9 +275,9 @@ impl super::Backend for Backend {
             return Err(Error::NoSupport);
         }
 
-        let mut handle = Handle::from(dma_buf::Resource::new(layout));
-        let res = handle.as_mut();
+        let mut res = dma_buf::Resource::new(layout);
         res.bind_memory(dmabuf);
+        let handle = Handle::from(res);
 
         Ok(handle)
     }
@@ -285,7 +289,7 @@ impl super::Backend for Backend {
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
         let alloc = |_| Err(Error::InvalidParam);
-        dma_buf::bind_memory::<_>(handle, mt, dmabuf, alloc)
+        dma_buf::bind_memory(handle, mt, dmabuf, alloc)
     }
 }
 
