@@ -14,7 +14,7 @@ fn main() {
 
     let bo_desc = hbm::Description::new()
         .flags(Flags::EXTERNAL | Flags::MAP)
-        .format(Format::new(DrmFourcc::Xrgb8888 as u32))
+        .format(Format(DrmFourcc::Xrgb8888 as u32))
         .modifier(DrmModifier::Linear.into());
     let bo_usage = Usage::DrmKms(hbm::drm_kms::Usage::OVERLAY);
     let bo_class = dev.classify(bo_desc, slice::from_ref(&bo_usage)).unwrap();

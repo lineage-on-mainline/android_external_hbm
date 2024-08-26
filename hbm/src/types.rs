@@ -51,15 +51,11 @@ pub(crate) type Result<T> = result::Result<T, Error>;
 
 pub type Size = u64;
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Format(pub u32);
 
 impl Format {
-    pub fn new(val: u32) -> Self {
-        Self(val)
-    }
-
-    pub fn is_invalid(&self) -> bool {
+    pub(crate) fn is_invalid(&self) -> bool {
         *self == formats::INVALID
     }
 }
@@ -75,7 +71,7 @@ where
     T: Into<u32>,
 {
     fn from(val: T) -> Self {
-        Self::new(val.into())
+        Self(val.into())
     }
 }
 
@@ -89,14 +85,10 @@ impl fmt::Display for Format {
     }
 }
 
-#[derive(Copy, Clone, Debug, Eq, Hash, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Modifier(pub u64);
 
 impl Modifier {
-    pub fn new(val: u64) -> Self {
-        Self(val)
-    }
-
     pub(crate) fn is_invalid(&self) -> bool {
         *self == formats::MOD_INVALID
     }
@@ -117,13 +109,13 @@ where
     T: Into<u64>,
 {
     fn from(val: T) -> Self {
-        Self::new(val.into())
+        Self(val.into())
     }
 }
 
-#[non_exhaustive]
-pub enum Access {
+pub(crate) enum Access {
     Read,
+    #[allow(dead_code)]
     Write,
     ReadWrite,
 }

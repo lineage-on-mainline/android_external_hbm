@@ -6,7 +6,7 @@ use std::sync::Arc;
 fn test_image(dev: Arc<hbm::Device>) {
     let img_desc = hbm::Description::new()
         .flags(Flags::EXTERNAL | Flags::MAP | Flags::COPY)
-        .format(Format::new(DrmFourcc::Argb8888 as u32));
+        .format(Format(DrmFourcc::Argb8888 as u32));
     let img_usage = Usage::Vulkan(hbm::vulkan::Usage::empty());
     let img_class = dev.classify(img_desc, slice::from_ref(&img_usage)).unwrap();
 
