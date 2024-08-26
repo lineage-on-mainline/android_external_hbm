@@ -83,6 +83,7 @@ pub struct Class {
     // these are copied from user inputs
     pub(crate) flags: Flags,
     pub(crate) format: Format,
+
     pub(crate) usage: Usage,
 
     // These express backend limits.  When there are multiple backends, limits from all backends
@@ -441,7 +442,7 @@ impl Handle {
 }
 
 bitflags::bitflags! {
-    #[derive(Clone, Copy, Debug, Default, PartialEq)]
+    #[derive(Clone, Copy, Debug, Default)]
     pub struct MemoryType: u32 {
         const LOCAL = 1 << 0;
         const MAPPABLE = 1 << 1;
