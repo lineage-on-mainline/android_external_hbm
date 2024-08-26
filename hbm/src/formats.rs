@@ -244,7 +244,6 @@ pub fn packed_layout(
     Ok(layout)
 }
 
-#[derive(PartialEq)]
 pub enum Swizzle {
     None,
     Rgb1,
