@@ -14,7 +14,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 struct BoState {
     bound: bool,
-    mt_mappable: bool,
+    mt: MemoryType,
 
     mapping: Option<Mapping>,
     map_count: u32,
@@ -48,7 +48,7 @@ impl Bo {
     fn new(device: Arc<Device>, class: &Class, extent: Extent, handle: Handle) -> Self {
         let state = BoState {
             bound: false,
-            mt_mappable: false,
+            mt: MemoryType::empty(),
             mapping: None,
             map_count: 0,
         };
@@ -159,7 +159,7 @@ impl Bo {
         backend.bind_memory(&mut self.handle, mt, dmabuf)?;
 
         state.bound = true;
-        state.mt_mappable = mt.contains(MemoryType::MAPPABLE);
+        state.mt = mt;
 
         Ok(())
     }
@@ -180,7 +180,7 @@ impl Bo {
         }
 
         let mut state = self.lock_state()?;
-        if !state.mt_mappable {
+        if !state.mt.contains(MemoryType::MAPPABLE) {
             return Err(Error::InvalidParam);
         }
 
@@ -212,7 +212,7 @@ impl Bo {
     pub fn flush(&self) {
         let state = self.lock_state().unwrap();
 
-        if state.map_count > 0 {
+        if state.map_count > 0 && !state.mt.contains(MemoryType::COHERENT) {
             self.backend().flush(&self.handle);
         }
     }
@@ -220,7 +220,7 @@ impl Bo {
     pub fn invalidate(&self) {
         let state = self.lock_state().unwrap();
 
-        if state.map_count > 0 {
+        if state.map_count > 0 && !state.mt.contains(MemoryType::COHERENT) {
             self.backend().invalidate(&self.handle);
         }
     }
