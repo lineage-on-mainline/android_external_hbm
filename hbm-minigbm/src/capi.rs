@@ -264,7 +264,7 @@ mod c {
     }
 
     pub fn desc(desc: *const hbm_description) -> hbm_description {
-        // SAFETY: desc is non-NULL
+        // SAFETY: desc is valid
         unsafe { *desc }
     }
 
@@ -323,8 +323,8 @@ mod c {
             mod_count = mod_max;
         }
 
-        // SAFETY: out_mods is large enough for mod_max modifiers
-        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_count as _) };
+        // SAFETY: out_mods is large enough for mod_count modifiers
+        let out_mods = unsafe { slice::from_raw_parts_mut(out_mods, mod_count as usize) };
 
         for (dst, src) in out_mods.iter_mut().zip(mods.iter()) {
             *dst = src.0;
@@ -334,16 +334,16 @@ mod c {
     }
 
     pub fn extent(extent: *const hbm_extent, fmt: u32) -> hbm::Extent {
-        // SAFETY: extent is non-NULL
+        // SAFETY: extent is valid
         let extent = unsafe { &*extent };
 
         const DRM_FORMAT_INVALID: u32 = 0;
         if fmt == DRM_FORMAT_INVALID {
-            // SAFETY: it's a buffer
+            // SAFETY: extent is for a buffer
             let buf = unsafe { extent.buffer };
             hbm::Extent::Buffer(buf.size)
         } else {
-            // SAFETY: it's an image
+            // SAFETY: extent is for an image
             let img = unsafe { extent.image };
             hbm::Extent::Image(img.width, img.height)
         }
@@ -354,9 +354,9 @@ mod c {
             return None;
         }
 
-        // SAFETY: con is non-NULL
+        // SAFETY: con is valid
         let con = unsafe { &*con };
-        // SAFETY: con.modifiers has the right size
+        // SAFETY: con.modifiers is large enough for con.modifier_count modifiers
         let mods = unsafe { slice::from_raw_parts(con.modifiers, con.modifier_count as usize) };
 
         let mut con = hbm::Constraint::new()
@@ -372,7 +372,7 @@ mod c {
     }
 
     pub fn layout(layout: *const hbm_layout) -> hbm::Layout {
-        // SAFETY: layout is non-NULL
+        // SAFETY: layout is valid
         let layout = unsafe { &*layout };
 
         hbm::Layout::new()
@@ -462,8 +462,8 @@ mod c {
             mt_count = mt_max;
         }
 
-        // SAFETY: out_mts is large enough for mt_max memory types
-        let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_count as _) };
+        // SAFETY: out_mts is large enough for mt_count memory types
+        let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_count as usize) };
 
         for (dst, src) in out_mts.iter_mut().zip(mts.into_iter()) {
             *dst = mt_ret(src);
@@ -507,14 +507,14 @@ mod c {
             return None;
         }
 
-        // SAFETY: s is a non-NULL and nul-terminated
+        // SAFETY: s is valid
         let s = unsafe { ffi::CStr::from_ptr(s) };
 
         s.to_str().ok()
     }
 
     pub fn buf_copy(copy: *const hbm_copy_buffer) -> hbm::CopyBuffer {
-        // SAFETY: copy is non-NULL
+        // SAFETY: copy is valid
         let copy = unsafe { &*copy };
 
         hbm::CopyBuffer {
@@ -525,7 +525,7 @@ mod c {
     }
 
     pub fn img_copy(copy: *const hbm_copy_buffer_image) -> hbm::CopyBufferImage {
-        // SAFETY: copy is non-NULL
+        // SAFETY: copy is valid
         let copy = unsafe { &*copy };
 
         hbm::CopyBufferImage {
@@ -564,7 +564,7 @@ pub unsafe extern "C" fn hbm_log_init(
         let msg = format!("{}", rec.args());
 
         let _ = ffi::CString::new(msg).inspect(|cstr|
-            // SAFETY: we trust the client
+            // SAFETY: log_cb is valid
             unsafe {
                 log_cb(log_lv, cstr.as_ptr(), cb_data as *mut ffi::c_void);
             });
