@@ -1374,7 +1374,7 @@ impl Drop for Device {
 
 #[derive(Default)]
 struct CommandPool {
-    pools: Mutex<HashMap<thread::ThreadId, (vk::CommandPool, vk::CommandBuffer)>>,
+    pools: Mutex<HashMap<thread::ThreadId, CommandBuffer>>,
 }
 
 impl CommandPool {
@@ -1398,39 +1398,19 @@ impl CommandPool {
             return Ok(cmd);
         }
 
-        let pool = Self::create_command_pool(dev)?;
-        let cmd = Self::allocate_command_buffer(dev, pool)?; // TODO don't leak pool
-                                                             //
-        let mut pools = self.pools.lock().unwrap();
-        pools.insert(thread::current().id(), (pool, cmd));
+        let cmd = CommandBuffer::new(dev)?;
 
-        Ok(cmd)
+        let tid = thread::current().id();
+        let mut pools = self.pools.lock().unwrap();
+        let cmd = pools.entry(tid).or_insert(cmd);
+
+        Ok(cmd.handle)
     }
 
     fn lookup(&self) -> Option<vk::CommandBuffer> {
+        let tid = thread::current().id();
         let pools = self.pools.lock().unwrap();
-        pools.get(&thread::current().id()).map(|&(_, cmd)| cmd)
-    }
-
-    fn create_command_pool(dev: &Device) -> Result<vk::CommandPool> {
-        let pool_info = vk::CommandPoolCreateInfo::default()
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-            .queue_family_index(dev.properties().queue_family);
-
-        // SAFETY:
-        unsafe { dev.handle.create_command_pool(&pool_info, None) }.map_err(Error::from)
-    }
-
-    fn allocate_command_buffer(dev: &Device, pool: vk::CommandPool) -> Result<vk::CommandBuffer> {
-        let alloc_info = vk::CommandBufferAllocateInfo::default()
-            .command_pool(pool)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-
-        // SAFETY: ok
-        let cmds = unsafe { dev.handle.allocate_command_buffers(&alloc_info) }?;
-
-        Ok(cmds[0])
+        pools.get(&tid).map(|cmd| cmd.handle)
     }
 
     fn begin_command_buffer(dev: &Device, cmd: vk::CommandBuffer) -> Result<()> {
@@ -1472,13 +1452,57 @@ impl CommandPool {
 
     fn clear(&self, dev: &Device) {
         let mut pools = self.pools.lock().unwrap();
-
-        for (_, (pool, _)) in pools.drain() {
-            // SAFETY: ok
-            unsafe {
-                dev.handle.destroy_command_pool(pool, None);
-            }
+        for (_, cmd) in pools.drain() {
+            cmd.destroy(dev);
         }
+    }
+}
+
+struct CommandBuffer {
+    pool: vk::CommandPool,
+    handle: vk::CommandBuffer,
+}
+
+impl CommandBuffer {
+    fn new(dev: &Device) -> Result<Self> {
+        let pool = Self::create_command_pool(dev)?;
+        let handle = Self::allocate_command_buffer(dev, pool)
+            .inspect_err(|_| Self::destroy_command_pool(dev, pool))?;
+        let cmd = Self { pool, handle };
+
+        Ok(cmd)
+    }
+
+    fn create_command_pool(dev: &Device) -> Result<vk::CommandPool> {
+        let pool_info = vk::CommandPoolCreateInfo::default()
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(dev.properties().queue_family);
+
+        // SAFETY:
+        unsafe { dev.handle.create_command_pool(&pool_info, None) }.map_err(Error::from)
+    }
+
+    fn destroy_command_pool(dev: &Device, pool: vk::CommandPool) {
+        // SAFETY: ok
+        unsafe {
+            dev.handle.destroy_command_pool(pool, None);
+        }
+    }
+
+    fn allocate_command_buffer(dev: &Device, pool: vk::CommandPool) -> Result<vk::CommandBuffer> {
+        let alloc_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        // SAFETY: ok
+        let cmds = unsafe { dev.handle.allocate_command_buffers(&alloc_info) }?;
+
+        Ok(cmds[0])
+    }
+
+    fn destroy(self, dev: &Device) {
+        Self::destroy_command_pool(dev, self.pool);
     }
 }
 
