@@ -69,7 +69,6 @@ impl Description {
 #[non_exhaustive]
 pub enum Usage {
     Unused,
-    Default,
     #[cfg(feature = "drm")]
     DrmKms(drm_kms::Usage),
     Vulkan(vulkan::Usage),
@@ -100,7 +99,7 @@ impl Class {
         Self {
             flags: desc.flags,
             format: desc.format,
-            usage: Usage::Default,
+            usage: Usage::Unused,
             max_extent: Extent::max(desc.is_buffer()),
             modifiers: Vec::new(),
             constraint: Some(Default::default()),
