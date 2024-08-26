@@ -21,10 +21,8 @@ than via cargo.
 `hbm`
 
   - quirk device and quirks
-  - thread safety
   - error reporting
   - require modifiers
-  - validations
   - `no_std`
   - cleanups
   - docs
