@@ -273,7 +273,7 @@ impl super::Backend for Backend {
 
         let mut handle = Handle::from(dma_buf::Resource::new(layout));
         let res = handle.as_mut();
-        res.bind(dmabuf);
+        res.bind_memory(dmabuf);
 
         Ok(handle)
     }

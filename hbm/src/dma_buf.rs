@@ -25,7 +25,7 @@ impl Resource {
         self.layout.size
     }
 
-    pub fn bind(&mut self, dmabuf: OwnedFd) {
+    pub fn bind_memory(&mut self, dmabuf: OwnedFd) {
         self.dmabuf = Some(dmabuf);
     }
 
@@ -143,7 +143,7 @@ where
         alloc(res.size())?
     };
 
-    res.bind(dmabuf);
+    res.bind_memory(dmabuf);
 
     Ok(())
 }
