@@ -679,7 +679,7 @@ pub struct Device {
     dispatch: DeviceDispatch,
 
     queue: vk::Queue,
-    command_pool: CommandPool,
+    command_buffer: PerThreadCommandBuffer,
 }
 
 impl Device {
@@ -712,7 +712,7 @@ impl Device {
             handle,
             dispatch,
             queue: Default::default(),
-            command_pool: Default::default(),
+            command_buffer: Default::default(),
         };
 
         dev.init()?;
@@ -1268,26 +1268,26 @@ impl Device {
     }
 
     fn copy_buffer(&self, src: vk::Buffer, dst: vk::Buffer, region: vk::BufferCopy) -> Result<()> {
-        let cmd = self.command_pool.begin(self)?;
+        let cmd = self.command_buffer.session(self)?;
 
         let src_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
         let dst_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
         let src_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
         let dst_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
 
-        self.cmd_buffer_barrier(cmd, src, src_acquire);
-        self.cmd_buffer_barrier(cmd, dst, dst_acquire);
+        self.cmd_buffer_barrier(cmd.handle, src, src_acquire);
+        self.cmd_buffer_barrier(cmd.handle, dst, dst_acquire);
 
         // SAFETY: good
         unsafe {
             self.handle
-                .cmd_copy_buffer(cmd, src, dst, slice::from_ref(&region));
+                .cmd_copy_buffer(cmd.handle, src, dst, slice::from_ref(&region));
         }
 
-        self.cmd_buffer_barrier(cmd, src, src_release);
-        self.cmd_buffer_barrier(cmd, dst, dst_release);
+        self.cmd_buffer_barrier(cmd.handle, src, src_release);
+        self.cmd_buffer_barrier(cmd.handle, dst, dst_release);
 
-        self.command_pool.end_and_submit(self, cmd)
+        cmd.execute()
     }
 
     fn copy_image_to_buffer(
@@ -1296,7 +1296,7 @@ impl Device {
         buf: vk::Buffer,
         region: vk::BufferImageCopy,
     ) -> Result<()> {
-        let cmd = self.command_pool.begin(self)?;
+        let cmd = self.command_buffer.session(self)?;
 
         let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
         let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
@@ -1305,13 +1305,13 @@ impl Device {
         let img_aspect = region.image_subresource.aspect_mask;
         let img_layout = img_acquire.dst_image_layout;
 
-        self.cmd_image_barrier(cmd, img, img_aspect, img_acquire);
-        self.cmd_buffer_barrier(cmd, buf, buf_acquire);
+        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_acquire);
+        self.cmd_buffer_barrier(cmd.handle, buf, buf_acquire);
 
         // SAFETY: good
         unsafe {
             self.handle.cmd_copy_image_to_buffer(
-                cmd,
+                cmd.handle,
                 img,
                 img_layout,
                 buf,
@@ -1319,10 +1319,10 @@ impl Device {
             );
         }
 
-        self.cmd_image_barrier(cmd, img, img_aspect, img_release);
-        self.cmd_buffer_barrier(cmd, buf, buf_release);
+        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_release);
+        self.cmd_buffer_barrier(cmd.handle, buf, buf_release);
 
-        self.command_pool.end_and_submit(self, cmd)
+        cmd.execute()
     }
 
     fn copy_buffer_to_image(
@@ -1331,7 +1331,7 @@ impl Device {
         img: vk::Image,
         region: vk::BufferImageCopy,
     ) -> Result<()> {
-        let cmd = self.command_pool.begin(self)?;
+        let cmd = self.command_buffer.session(self)?;
 
         let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
         let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
@@ -1340,13 +1340,13 @@ impl Device {
         let img_aspect = region.image_subresource.aspect_mask;
         let img_layout = img_acquire.dst_image_layout;
 
-        self.cmd_buffer_barrier(cmd, buf, buf_acquire);
-        self.cmd_image_barrier(cmd, img, img_aspect, img_acquire);
+        self.cmd_buffer_barrier(cmd.handle, buf, buf_acquire);
+        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_acquire);
 
         // SAFETY: good
         unsafe {
             self.handle.cmd_copy_buffer_to_image(
-                cmd,
+                cmd.handle,
                 buf,
                 img,
                 img_layout,
@@ -1354,16 +1354,16 @@ impl Device {
             );
         }
 
-        self.cmd_buffer_barrier(cmd, buf, buf_release);
-        self.cmd_image_barrier(cmd, img, img_aspect, img_release);
+        self.cmd_buffer_barrier(cmd.handle, buf, buf_release);
+        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_release);
 
-        self.command_pool.end_and_submit(self, cmd)
+        cmd.execute()
     }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
-        self.command_pool.clear(self);
+        self.command_buffer.destroy(self);
 
         // SAFETY: handle is owned
         unsafe {
@@ -1372,89 +1372,71 @@ impl Drop for Device {
     }
 }
 
-#[derive(Default)]
-struct CommandPool {
-    pools: Mutex<HashMap<thread::ThreadId, CommandBuffer>>,
+struct CommandBufferSession<'a> {
+    device: &'a Device,
+    handle: vk::CommandBuffer,
 }
 
-impl CommandPool {
-    fn begin(&self, dev: &Device) -> Result<vk::CommandBuffer> {
-        let cmd = self.get(dev)?;
+impl<'a> CommandBufferSession<'a> {
+    fn new(device: &'a Device, handle: vk::CommandBuffer) -> Result<Self> {
+        let cmd = Self { device, handle };
 
-        Self::begin_command_buffer(dev, cmd)?;
+        cmd.begin()?;
 
         Ok(cmd)
     }
 
-    fn end_and_submit(&self, dev: &Device, cmd: vk::CommandBuffer) -> Result<()> {
-        Self::end_command_buffer(dev, cmd)?;
-        Self::queue_submit(dev, cmd)?;
-        Self::queue_wait_idle(dev)?;
-        Self::reset_command_buffer(dev, cmd)
+    fn execute(self) -> Result<()> {
+        self.end()?;
+        self.submit()?;
+        self.wait()?;
+        self.reset()
     }
 
-    fn get(&self, dev: &Device) -> Result<vk::CommandBuffer> {
-        if let Some(cmd) = self.lookup() {
-            return Ok(cmd);
-        }
-
-        let cmd = CommandBuffer::new(dev)?;
-
-        let tid = thread::current().id();
-        let mut pools = self.pools.lock().unwrap();
-        let cmd = pools.entry(tid).or_insert(cmd);
-
-        Ok(cmd.handle)
-    }
-
-    fn lookup(&self) -> Option<vk::CommandBuffer> {
-        let tid = thread::current().id();
-        let pools = self.pools.lock().unwrap();
-        pools.get(&tid).map(|cmd| cmd.handle)
-    }
-
-    fn begin_command_buffer(dev: &Device, cmd: vk::CommandBuffer) -> Result<()> {
+    fn begin(&self) -> Result<()> {
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
         // SAFETY: ok
-        unsafe { dev.handle.begin_command_buffer(cmd, &begin_info) }.map_err(Error::from)
-    }
-
-    fn end_command_buffer(dev: &Device, cmd: vk::CommandBuffer) -> Result<()> {
-        // SAFETY: ok
-        unsafe { dev.handle.end_command_buffer(cmd) }.map_err(Error::from)
-    }
-
-    fn queue_submit(dev: &Device, cmd: vk::CommandBuffer) -> Result<()> {
-        let submit_info = vk::SubmitInfo::default().command_buffers(slice::from_ref(&cmd));
-        // SAFETY: ok
         unsafe {
-            dev.handle
-                .queue_submit(dev.queue, slice::from_ref(&submit_info), vk::Fence::null())
+            self.device
+                .handle
+                .begin_command_buffer(self.handle, &begin_info)
         }
         .map_err(Error::from)
     }
 
-    fn queue_wait_idle(dev: &Device) -> Result<()> {
+    fn end(&self) -> Result<()> {
         // SAFETY: ok
-        unsafe { dev.handle.queue_wait_idle(dev.queue) }.map_err(Error::from)
+        unsafe { self.device.handle.end_command_buffer(self.handle) }.map_err(Error::from)
     }
 
-    fn reset_command_buffer(dev: &Device, cmd: vk::CommandBuffer) -> Result<()> {
+    fn submit(&self) -> Result<()> {
+        let submit_info = vk::SubmitInfo::default().command_buffers(slice::from_ref(&self.handle));
         // SAFETY: ok
         unsafe {
-            dev.handle
-                .reset_command_buffer(cmd, vk::CommandBufferResetFlags::empty())
+            self.device.handle.queue_submit(
+                self.device.queue,
+                slice::from_ref(&submit_info),
+                vk::Fence::null(),
+            )
         }
         .map_err(Error::from)
     }
 
-    fn clear(&self, dev: &Device) {
-        let mut pools = self.pools.lock().unwrap();
-        for (_, cmd) in pools.drain() {
-            cmd.destroy(dev);
+    fn wait(&self) -> Result<()> {
+        // SAFETY: ok
+        unsafe { self.device.handle.queue_wait_idle(self.device.queue) }.map_err(Error::from)
+    }
+
+    fn reset(&self) -> Result<()> {
+        // SAFETY: ok
+        unsafe {
+            self.device
+                .handle
+                .reset_command_buffer(self.handle, vk::CommandBufferResetFlags::empty())
         }
+        .map_err(Error::from)
     }
 }
 
@@ -1503,6 +1485,48 @@ impl CommandBuffer {
 
     fn destroy(self, dev: &Device) {
         Self::destroy_command_pool(dev, self.pool);
+    }
+}
+
+#[derive(Default)]
+struct PerThreadCommandBuffer {
+    cmds: Mutex<HashMap<thread::ThreadId, CommandBuffer>>,
+}
+
+impl PerThreadCommandBuffer {
+    fn session<'a>(&self, dev: &'a Device) -> Result<CommandBufferSession<'a>> {
+        let handle = match self.lookup() {
+            Some(handle) => handle,
+            None => self.create(dev)?,
+        };
+
+        CommandBufferSession::new(dev, handle)
+    }
+
+    fn lookup(&self) -> Option<vk::CommandBuffer> {
+        let tid = thread::current().id();
+        let cmds = self.cmds.lock().unwrap();
+
+        cmds.get(&tid).map(|cmd| cmd.handle)
+    }
+
+    fn create(&self, dev: &Device) -> Result<vk::CommandBuffer> {
+        let cmd = CommandBuffer::new(dev)?;
+        let handle = cmd.handle;
+
+        let tid = thread::current().id();
+        let mut cmds = self.cmds.lock().unwrap();
+
+        cmds.insert(tid, cmd);
+
+        Ok(handle)
+    }
+
+    fn destroy(&self, dev: &Device) {
+        let mut cmds = self.cmds.lock().unwrap();
+        for (_, cmd) in cmds.drain() {
+            cmd.destroy(dev);
+        }
     }
 }
 
