@@ -558,7 +558,7 @@ mod tests {
     use std::cmp;
 
     #[test]
-    fn description() {
+    fn test_description() {
         let mut desc = Description::new();
         assert!(desc.is_valid());
         assert!(desc.is_buffer());
@@ -572,7 +572,7 @@ mod tests {
     }
 
     #[test]
-    fn class() {
+    fn test_class() {
         let buf_desc = Description::new();
         let buf_class = Class::new(&buf_desc).max_extent(Extent::Buffer(10));
 
@@ -599,7 +599,7 @@ mod tests {
     }
 
     #[test]
-    fn extent() {
+    fn test_extent() {
         for val in [42 as Size, (0x1234 as Size) << 30] {
             assert_eq!(Extent::Buffer(val).size(), val);
         }
@@ -639,7 +639,7 @@ mod tests {
     }
 
     #[test]
-    fn constraint() {
+    fn test_constraint() {
         let con = Constraint::new();
         assert_eq!(con.to_tuple(), (1, 1, 1));
 
@@ -671,7 +671,7 @@ mod tests {
     }
 
     #[test]
-    fn layout() {
+    fn test_layout() {
         let size = 10;
         let buf_desc = Description::new();
         let buf_class = Class::new(&buf_desc).max_extent(Extent::Buffer(size));

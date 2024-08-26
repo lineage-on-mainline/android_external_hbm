@@ -330,9 +330,8 @@ pub fn to_vk(fmt: Format) -> Result<(vk::Format, Swizzle)> {
 mod tests {
     use super::*;
 
-    #[cfg(test)]
     #[test]
-    fn consts() {
+    fn test_consts() {
         assert_eq!(consts::DRM_FORMAT_INVALID, 0);
         assert_eq!(consts::DRM_FORMAT_R8, 538982482);
         assert_eq!(consts::DRM_FORMAT_MOD_INVALID, 72057594037927935);
@@ -340,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn fourcc() {
+    fn test_fourcc() {
         assert_eq!(super::fourcc(R8), String::from("'R8  '"));
         assert_eq!(
             super::fourcc(Format(0xffffffff)),
@@ -349,20 +348,20 @@ mod tests {
     }
 
     #[test]
-    fn name() {
+    fn test_name() {
         assert_eq!(super::name(R8), Some("R8"));
         assert_eq!(super::name(INVALID), None);
     }
 
     #[test]
-    fn format_class() {
+    fn test_format_class() {
         for fmt in KNOWN_FORMATS {
             assert!(super::format_class(fmt).is_ok());
         }
     }
 
     #[test]
-    fn packed_layout() {
+    fn test_packed_layout() {
         let w = 10;
         let h = 10;
         let mut layout = Layout::new()
@@ -380,7 +379,7 @@ mod tests {
     }
 
     #[test]
-    fn to_vk() {
+    fn test_to_vk() {
         #[cfg(target_endian = "little")]
         for fmt in KNOWN_FORMATS {
             let (vk_fmt, _) = super::to_vk(fmt).unwrap();

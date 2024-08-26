@@ -131,12 +131,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn format() {
+    fn test_format() {
         assert_eq!(Format::default(), formats::INVALID);
     }
 
     #[test]
-    fn modifier() {
+    fn test_modifier() {
         assert_eq!(Modifier::default(), formats::MOD_INVALID);
     }
 }
