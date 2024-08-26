@@ -551,7 +551,7 @@ pub unsafe extern "C" fn hbm_log_init(
 ) {
     let log_lv_max = c::log_lv_max(log_lv_max);
     if log_lv_max == log::LevelFilter::Off || log_cb.is_none() {
-        super::log::init(log::LevelFilter::Off, Box::new(|_| {}));
+        super::log::disable();
         return;
     }
 
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn hbm_log_init(
             });
     };
 
-    super::log::init(log_lv_max, Box::new(cb));
+    super::log::enable(log_lv_max, Box::new(cb));
 }
 
 /// Creates a device.

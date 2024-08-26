@@ -9,33 +9,34 @@ use std::{env, fs};
 type LoggerCallback = Box<dyn Fn(&Record) + Send>;
 
 struct LoggerState {
-    callback: LoggerCallback,
+    callback: Option<LoggerCallback>,
     file: Option<fs::File>,
 }
 
 struct Logger {
-    state: Mutex<Option<LoggerState>>,
+    state: Mutex<LoggerState>,
 }
 
 impl Logger {
     fn init(&self) {
         let mut state = self.state.lock().unwrap();
 
-        let callback = Box::new(|_rec: &Record| {});
+        state.callback = Some(Self::nop_callback());
 
-        let mut file = None;
         if let Ok(filename) = env::var("HBM_LOG_FILE") {
-            file = fs::File::create(filename).ok();
+            state.file = fs::File::create(filename).ok();
         }
-
-        *state = Some(LoggerState { callback, file });
     }
 
     fn update_callback(&self, cb: LoggerCallback) {
         let mut state = self.state.lock().unwrap();
-        let state = state.as_mut().unwrap();
 
-        state.callback = cb;
+        state.callback = Some(cb);
+    }
+
+    fn nop_callback() -> LoggerCallback {
+        let cb = |_rec: &Record| {};
+        Box::new(cb)
     }
 }
 
@@ -46,9 +47,8 @@ impl Log for Logger {
 
     fn log(&self, rec: &Record) {
         let mut state = self.state.lock().unwrap();
-        let state = state.as_mut().unwrap();
 
-        (state.callback)(rec);
+        (state.callback.as_ref().unwrap())(rec);
 
         if let Some(file) = state.file.as_mut() {
             let _ = writeln!(file, "{}: {}", rec.level(), rec.args());
@@ -59,19 +59,28 @@ impl Log for Logger {
 }
 
 static LOGGER: Logger = Logger {
-    state: Mutex::new(None),
+    state: Mutex::new(LoggerState {
+        callback: None,
+        file: None,
+    }),
 };
 
 fn init_once() {
-    LOGGER.init();
-    let _ = log::set_logger(&LOGGER);
+    static ONCE: Once = Once::new();
+    ONCE.call_once(|| {
+        LOGGER.init();
+        let _ = log::set_logger(&LOGGER);
+    });
 }
 
-pub fn init(max_lv: LevelFilter, cb: LoggerCallback) {
-    static ONCE: Once = Once::new();
-    ONCE.call_once(init_once);
-
+pub fn enable(max_lv: LevelFilter, cb: LoggerCallback) {
+    init_once();
     log::set_max_level(max_lv);
-
     LOGGER.update_callback(cb);
+}
+
+pub fn disable() {
+    init_once();
+    log::set_max_level(log::LevelFilter::Off);
+    LOGGER.update_callback(Logger::nop_callback());
 }
