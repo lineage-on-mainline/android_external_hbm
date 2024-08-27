@@ -13,7 +13,7 @@ pub struct Device {
 impl Device {
     pub fn memory_plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
         if fmt.is_invalid() || modifier.is_invalid() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         for backend in &self.backends {
@@ -28,11 +28,11 @@ impl Device {
 
     pub fn classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
         if !desc.is_valid() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         if self.backends.len() != usage.len() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         if self.backends.len() == 1 {
@@ -141,7 +141,7 @@ impl Builder {
 
     pub fn build(self) -> Result<Arc<Device>> {
         if self.backends.is_empty() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let dev = Device {

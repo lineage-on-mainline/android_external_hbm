@@ -356,21 +356,21 @@ mod drm {
     pub fn drm_parse_in_formats_blob(blob: &[u8]) -> Result<InFormatsIter> {
         let hdr_size = mem::size_of::<drm_format_modifier_blob>();
         if hdr_size > blob.len() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let hdr_ptr = blob.as_ptr() as *const drm_format_modifier_blob;
         // SAFETY: hdr_ptr points to a valid header
         let hdr = unsafe { &*hdr_ptr };
         if hdr.version != 1 {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let fmt_offset = hdr.formats_offset as usize;
         let fmt_count = hdr.count_formats as usize;
         let fmt_size = mem::size_of::<u32>() * fmt_count;
         if fmt_offset < hdr_size || fmt_offset + fmt_size > blob.len() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         // SAFETY: blob is large enough to hold the formats
@@ -382,7 +382,7 @@ mod drm {
         let mod_count = hdr.count_modifiers as usize;
         let mod_size = mem::size_of::<u32>() * mod_count;
         if mod_offset < fmt_offset + fmt_size || mod_offset + mod_size > blob.len() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         // SAFETY: blob is large enough to hold the modifiers

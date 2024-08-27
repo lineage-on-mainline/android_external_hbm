@@ -17,15 +17,19 @@ pub enum Error {
     IntegerConversion,
     #[error("bad string conversion")]
     StringConversion,
+    #[error("bad user input")]
+    User,
     #[error("no support")]
     NoSupport,
-    #[error("invalid parameter")]
-    InvalidParam,
 }
 
 impl Error {
     pub(crate) fn ctx<T>(s: &'static str) -> Result<T> {
         Err(Error::Context(s))
+    }
+
+    pub(crate) fn user<T>() -> Result<T> {
+        Err(Error::User)
     }
 }
 

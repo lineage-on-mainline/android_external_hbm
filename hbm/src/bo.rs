@@ -71,7 +71,7 @@ impl Bo {
         con: Option<Constraint>,
     ) -> Result<Self> {
         if !class.validate(extent) {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let con = merge_constraints(con, class.constraint.as_ref());
@@ -91,7 +91,7 @@ impl Bo {
         dmabuf: Option<BorrowedFd>,
     ) -> Result<Self> {
         if !class.validate(extent) {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let backend = device.backend(class.backend_index);
@@ -131,13 +131,13 @@ impl Bo {
 
     pub fn bind_memory(&mut self, mt: MemoryType, dmabuf: Option<OwnedFd>) -> Result<()> {
         if dmabuf.is_some() && !self.can_external() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let mut state = self.state.lock().unwrap();
 
         if state.bound {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let backend = self.device.backend(self.backend_index);
@@ -151,12 +151,12 @@ impl Bo {
 
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
         if !self.can_external() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let state = self.state.lock().unwrap();
         if !state.bound {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         self.backend().export_dma_buf(&self.handle, name)
@@ -164,12 +164,12 @@ impl Bo {
 
     pub fn map(&mut self) -> Result<Mapping> {
         if !self.can_map() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let mut state = self.state.lock().unwrap();
         if !state.bound || !state.mt.contains(MemoryType::MAPPABLE) {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         if state.map_count == 0 {
@@ -307,7 +307,7 @@ impl Bo {
         wait: bool,
     ) -> Result<Option<OwnedFd>> {
         if !self.validate_copy_buffer(src, &copy) {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let sync_fd = self
@@ -325,7 +325,7 @@ impl Bo {
         wait: bool,
     ) -> Result<Option<OwnedFd>> {
         if !self.validate_copy_buffer_image(src, &copy) {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         let sync_fd = self

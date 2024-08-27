@@ -46,7 +46,7 @@ impl Builder {
 
     pub fn build(self) -> Result<Backend> {
         if self.heap_name.is_some() && self.heap_fd.is_some() {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         if !utils::dma_heap_exists() {

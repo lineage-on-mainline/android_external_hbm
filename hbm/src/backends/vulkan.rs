@@ -31,11 +31,11 @@ bitflags::bitflags! {
 fn get_usage(usage: super::Usage, valid_usage: Usage) -> Result<Usage> {
     let usage = match usage {
         super::Usage::Vulkan(usage) => usage,
-        _ => return Err(Error::InvalidParam),
+        _ => return Error::user(),
     };
 
     if !valid_usage.contains(usage) {
-        return Err(Error::InvalidParam);
+        return Error::user();
     }
 
     Ok(usage)
@@ -163,7 +163,7 @@ fn best_mt_index(mts: Vec<(u32, vk::MemoryPropertyFlags)>, mt: MemoryType) -> Re
 
     let first_mt = mt_iter.next();
     if first_mt.is_none() {
-        return Err(Error::InvalidParam);
+        return Error::user();
     }
 
     let known_mt_flags = vk::MemoryPropertyFlags::DEVICE_LOCAL
@@ -502,7 +502,7 @@ impl Builder {
             }
             1 => (),
             _ => {
-                return Err(Error::InvalidParam);
+                return Error::user();
             }
         };
 

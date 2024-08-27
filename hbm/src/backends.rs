@@ -368,7 +368,7 @@ impl Layout {
             Self::new().size(size)
         } else {
             if !class.modifiers.iter().any(|m| m.is_linear()) {
-                return Err(Error::InvalidParam);
+                return Error::user();
             }
 
             formats::packed_layout(class.format, extent.width(), extent.height(), con)?

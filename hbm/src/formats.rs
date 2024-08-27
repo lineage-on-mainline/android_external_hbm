@@ -200,7 +200,7 @@ pub fn format_class(fmt: Format) -> Result<&'static FormatClass> {
         consts::DRM_FORMAT_NV12 | consts::DRM_FORMAT_NV21 => &FORMAT_CLASS_2PLANE_420_3B,
         consts::DRM_FORMAT_P010 | consts::DRM_FORMAT_P016 => &FORMAT_CLASS_2PLANE_420_6B,
         consts::DRM_FORMAT_YUV420 | consts::DRM_FORMAT_YVU420 => &FORMAT_CLASS_3PLANE_420_3B,
-        _ => return Err(Error::InvalidParam),
+        _ => return Error::user(),
     };
 
     Ok(fmt_class)
@@ -324,7 +324,7 @@ pub fn to_vk(fmt: Format) -> Result<(vk::Format, Swizzle)> {
     if mapped.0 != vk::Format::UNDEFINED {
         Ok(mapped)
     } else {
-        Err(Error::InvalidParam)
+        Error::user()
     }
 }
 

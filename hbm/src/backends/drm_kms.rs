@@ -48,11 +48,11 @@ pub fn open_drm_primary_device(
 fn get_drm_usage(usage: super::Usage) -> Result<Usage> {
     let usage = match usage {
         super::Usage::DrmKms(usage) => usage,
-        _ => return Err(Error::InvalidParam),
+        _ => return Error::user(),
     };
 
     if !usage.bits().is_power_of_two() {
-        return Err(Error::InvalidParam);
+        return Error::user();
     }
 
     Ok(usage)
@@ -288,7 +288,7 @@ impl super::Backend for Backend {
         mt: MemoryType,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
-        let alloc = |_| Err(Error::InvalidParam);
+        let alloc = |_| Error::user();
         dma_buf::bind_memory(handle, mt, dmabuf, alloc)
     }
 }
@@ -333,7 +333,7 @@ impl Builder {
             + self.device_id.is_some() as i32
             > 1
         {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
 
         if !utils::drm_exists() {

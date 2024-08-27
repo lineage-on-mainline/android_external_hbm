@@ -94,7 +94,7 @@ pub fn with_layout(
         || layout.modifier != packed.modifier
         || layout.plane_count != packed.plane_count
     {
-        return Err(Error::InvalidParam);
+        return Error::user();
     }
 
     let handle = Handle::from(Resource::new(layout));
@@ -122,12 +122,12 @@ where
     let res = handle.as_mut();
 
     if !MemoryType::MAPPABLE.contains(mt) {
-        return Err(Error::InvalidParam);
+        return Error::user();
     }
 
     if res.dmabuf.is_some() {
         return if dmabuf.is_some() {
-            Err(Error::InvalidParam)
+            Error::user()
         } else {
             Ok(())
         };
@@ -136,7 +136,7 @@ where
     let dmabuf = if let Some(dmabuf) = dmabuf {
         let size = utils::seek_end(&dmabuf)?;
         if res.size() > size {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
         dmabuf
     } else {

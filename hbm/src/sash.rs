@@ -1651,7 +1651,7 @@ impl Memory {
         if let Some(dmabuf) = dmabuf {
             let mt_mask = dev.get_dma_buf_mt_mask(dmabuf.as_fd());
             if mt_mask & (1 << mt_idx) == 0 {
-                return Err(Error::InvalidParam);
+                return Error::user();
             }
 
             raw_fd = dmabuf.into_raw_fd();
@@ -1809,12 +1809,12 @@ impl Buffer {
         let mut buf = Self::new(dev, buf_info, size)?;
 
         if buf.size > layout.size {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
         if let Some(dmabuf) = dmabuf {
             buf.mt_mask &= buf.device.get_dma_buf_mt_mask(dmabuf);
             if buf.mt_mask == 0 {
-                return Err(Error::InvalidParam);
+                return Error::user();
             }
         }
 
@@ -2016,12 +2016,12 @@ impl Image {
         let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external)?;
 
         if img.size > layout.size {
-            return Err(Error::InvalidParam);
+            return Error::user();
         }
         if let Some(dmabuf) = dmabuf {
             img.mt_mask &= img.device.get_dma_buf_mt_mask(dmabuf);
             if img.mt_mask == 0 {
-                return Err(Error::InvalidParam);
+                return Error::user();
             }
         }
 
