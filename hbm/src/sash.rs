@@ -678,7 +678,7 @@ pub struct Device {
     handle: ash::Device,
     dispatch: DeviceDispatch,
 
-    queue: vk::Queue,
+    queue: Mutex<vk::Queue>,
     command_buffer: PerThreadCommandBuffer,
 }
 
@@ -711,7 +711,7 @@ impl Device {
             physical_device,
             handle,
             dispatch,
-            queue: Default::default(),
+            queue: Mutex::new(Default::default()),
             command_buffer: Default::default(),
         };
 
@@ -778,10 +778,12 @@ impl Device {
 
     fn init(&mut self) -> Result<()> {
         // SAFETY: queue_family has 1 queue
-        self.queue = unsafe {
+        let queue = unsafe {
             self.handle
                 .get_device_queue(self.properties().queue_family, 0)
         };
+
+        *self.queue.lock().unwrap() = queue;
 
         Ok(())
     }
@@ -1415,10 +1417,11 @@ impl<'a> CommandBufferSession<'a> {
 
     fn submit(&self) -> Result<()> {
         let submit_info = vk::SubmitInfo::default().command_buffers(slice::from_ref(&self.handle));
-        // SAFETY: TODO: potential host synchronization violation
+        let queue = self.device.queue.lock().unwrap();
+        // SAFETY: no VUID violation
         unsafe {
             self.device.handle.queue_submit(
-                self.device.queue,
+                *queue,
                 slice::from_ref(&submit_info),
                 vk::Fence::null(),
             )
@@ -1427,8 +1430,10 @@ impl<'a> CommandBufferSession<'a> {
     }
 
     fn wait(&self) -> Result<()> {
-        // SAFETY: TODO: potential host synchronization violation
-        let res = unsafe { self.device.handle.queue_wait_idle(self.device.queue) };
+        // TODO use a fence to avoid the lock
+        let queue = self.device.queue.lock().unwrap();
+        // SAFETY: no VUID violation
+        let res = unsafe { self.device.handle.queue_wait_idle(*queue) };
         res.map_err(|e| {
             self.device.command_buffer.mark_unusable();
             Error::from(e)
