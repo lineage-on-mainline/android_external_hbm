@@ -3,7 +3,26 @@
 
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, Mutex};
-use std::{ffi, ptr, slice};
+use std::{ffi, fmt, ptr, slice};
+
+trait LogError {
+    fn log_err<D>(self, act: D) -> Self
+    where
+        D: fmt::Display;
+}
+
+impl<T> LogError for Result<T, hbm::Error> {
+    fn log_err<D>(self, act: D) -> Self
+    where
+        D: fmt::Display,
+    {
+        if let Err(err) = &self {
+            log::error!("failed to {act}: {err}");
+        }
+
+        self
+    }
+}
 
 /// Log level of a message or the message filter.
 #[repr(C)]
@@ -584,11 +603,16 @@ pub unsafe extern "C" fn hbm_device_create(dev: libc::dev_t, debug: bool) -> *mu
         .device_id(dev)
         .debug(debug)
         .build()
+        .log_err("create backend")
     else {
         return ptr::null_mut();
     };
 
-    let Ok(device) = hbm::Builder::new().add_backend(backend).build() else {
+    let Ok(device) = hbm::Builder::new()
+        .add_backend(backend)
+        .build()
+        .log_err("create device")
+    else {
         return ptr::null_mut();
     };
 
@@ -704,11 +728,16 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
     let con = c::con_optional(con);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
-    let Ok(class) = dev.get_class(desc, &mut class_cache) else {
+    let Ok(class) = dev
+        .get_class(desc, &mut class_cache)
+        .log_err("get bo class")
+    else {
         return ptr::null_mut();
     };
 
-    let Ok(bo) = hbm::Bo::with_constraint(dev.device.clone(), class, extent, con) else {
+    let Ok(bo) =
+        hbm::Bo::with_constraint(dev.device.clone(), class, extent, con).log_err("create bo")
+    else {
         return ptr::null_mut();
     };
 
@@ -740,11 +769,16 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
     let dmabuf = c::fd_borrow(dmabuf);
 
     let mut class_cache = dev.class_cache.lock().unwrap();
-    let Ok(class) = dev.get_class(desc, &mut class_cache) else {
+    let Ok(class) = dev
+        .get_class(desc, &mut class_cache)
+        .log_err("get explicit bo class")
+    else {
         return ptr::null_mut();
     };
 
-    let Ok(bo) = hbm::Bo::with_layout(dev.device.clone(), class, extent, layout, dmabuf) else {
+    let Ok(bo) = hbm::Bo::with_layout(dev.device.clone(), class, extent, layout, dmabuf)
+        .log_err("create explicit bo")
+    else {
         return ptr::null_mut();
     };
 
@@ -814,8 +848,13 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i3
     let bo = c::bo_mut(bo);
     let mt = c::mt(mt);
     let dmabuf = c::fd_optional(dmabuf);
+    let act = if dmabuf.is_some() {
+        "import memory"
+    } else {
+        "allocate memory"
+    };
 
-    bo.bind_memory(mt, dmabuf).is_ok()
+    bo.bind_memory(mt, dmabuf).log_err(act).is_ok()
 }
 
 /// Exports a dma-buf from a BO.
@@ -832,7 +871,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
     let bo = c::bo(bo);
     let name = c::str_optional(name);
 
-    let Ok(dmabuf) = bo.export_dma_buf(name) else {
+    let Ok(dmabuf) = bo.export_dma_buf(name).log_err("export") else {
         return -1;
     };
 
@@ -850,7 +889,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
 pub unsafe extern "C" fn hbm_bo_map(bo: *mut hbm_bo) -> *mut ffi::c_void {
     let bo = c::bo_mut(bo);
 
-    let Ok(mapping) = bo.map() else {
+    let Ok(mapping) = bo.map().log_err("map") else {
         return ptr::null_mut();
     };
 
@@ -925,7 +964,10 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
     let in_sync_fd = c::fd_optional(in_sync_fd);
     let wait = out_sync_fd.is_null();
 
-    let Ok(sync_fd) = bo.copy_buffer(src, copy, in_sync_fd, wait) else {
+    let Ok(sync_fd) = bo
+        .copy_buffer(src, copy, in_sync_fd, wait)
+        .log_err("copy buffer")
+    else {
         return false;
     };
 
@@ -962,7 +1004,10 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     let in_sync_fd = c::fd_optional(in_sync_fd);
     let wait = out_sync_fd.is_null();
 
-    let Ok(sync_fd) = bo.copy_buffer_image(src, copy, in_sync_fd, wait) else {
+    let Ok(sync_fd) = bo
+        .copy_buffer_image(src, copy, in_sync_fd, wait)
+        .log_err("copy image")
+    else {
         return false;
     };
 
