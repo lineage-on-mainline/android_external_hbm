@@ -36,7 +36,7 @@ impl Builder {
 
     pub fn build(self) -> Result<Backend> {
         if !utils::udmabuf_exists() {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let fd = utils::udmabuf_open()?;

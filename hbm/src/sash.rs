@@ -48,7 +48,7 @@ fn has_api_version(ver: u32) -> Result<()> {
     if vk::api_version_major(ver) == req_major && vk::api_version_minor(ver) >= req_minor {
         Ok(())
     } else {
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 }
 
@@ -67,7 +67,7 @@ fn has_device_id(props: vk::PhysicalDeviceDrmPropertiesEXT, dev_id: u64) -> Resu
         }
     }
 
-    Err(Error::NoSupport)
+    Error::unsupported()
 }
 
 fn can_export_import(props: vk::ExternalMemoryProperties) -> Result<()> {
@@ -76,7 +76,7 @@ fn can_export_import(props: vk::ExternalMemoryProperties) -> Result<()> {
     if props.external_memory_features.contains(flags) {
         Ok(())
     } else {
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 }
 
@@ -341,12 +341,12 @@ impl PhysicalDevice {
             });
 
             if required && !dev_info.extensions[idx] {
-                return Err(Error::NoSupport);
+                return Error::unsupported();
             }
         }
 
         if dev_id.is_some() && !dev_info.extensions[ExtId::ExtPhysicalDeviceDrm as usize] {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         self.properties.ext_image_drm_format_modifier =
@@ -401,7 +401,7 @@ impl PhysicalDevice {
             if self.properties.driver_id == vk::DriverId::MESA_RADV {
                 log::warn!("no VK_EXT_image_drm_format_modifier support");
             } else {
-                return Err(Error::NoSupport);
+                return Error::unsupported();
             }
         }
 
@@ -459,7 +459,7 @@ impl PhysicalDevice {
                     None
                 }
             })
-            .ok_or(Error::NoSupport)?;
+            .ok_or(Error::Unsupported)?;
 
         Ok(())
     }
@@ -789,7 +789,7 @@ impl Device {
             .properties()
             .formats
             .get(&fmt)
-            .ok_or(Error::NoSupport)?;
+            .ok_or(Error::Unsupported)?;
 
         fmt_props
             .modifiers
@@ -801,7 +801,7 @@ impl Device {
                     None
                 }
             })
-            .ok_or(Error::NoSupport)
+            .ok_or(Error::Unsupported)
     }
 
     fn format_plane_count(&self, fmt: vk::Format) -> u32 {
@@ -818,7 +818,7 @@ impl Device {
         if buf_info.flags.contains(vk::BufferCreateFlags::PROTECTED)
             && !self.properties().protected_memory
         {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         if buf_info.external {
@@ -927,7 +927,7 @@ impl Device {
         }
 
         if !comp_props.image_compression_flags.contains(compression) {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         Ok(())
@@ -941,7 +941,7 @@ impl Device {
         if img_info.flags.contains(vk::ImageCreateFlags::PROTECTED)
             && !self.properties().protected_memory
         {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let mut compression = vk::ImageCompressionFlagsEXT::DEFAULT;
@@ -951,7 +951,7 @@ impl Device {
             } else if modifier.is_invalid() {
                 modifier = formats::MOD_LINEAR;
             } else {
-                return Err(Error::NoSupport);
+                return Error::unsupported();
             }
         }
 
@@ -973,7 +973,7 @@ impl Device {
             .properties()
             .formats
             .get(&img_info.format)
-            .ok_or(Error::NoSupport)?;
+            .ok_or(Error::Unsupported)?;
 
         // get supported modifiers
         let mut modifiers: Vec<Modifier> = fmt_props
@@ -1003,7 +1003,7 @@ impl Device {
             .collect();
 
         if modifiers.is_empty() {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         // without modifier support, pick optimal when both are supported
@@ -1535,7 +1535,7 @@ impl PerThreadCommandBuffer {
                 if usable {
                     (handle, fence)
                 } else {
-                    return Err(Error::NoSupport);
+                    return Error::unsupported();
                 }
             }
             None => self.create(dev)?,

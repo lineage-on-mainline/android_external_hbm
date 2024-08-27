@@ -472,7 +472,7 @@ pub struct CopyBufferImage {
 
 pub trait Backend: Send + Sync {
     fn memory_plane_count(&self, _fmt: Format, _modifier: Modifier) -> Result<u32> {
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 
     fn classify(&self, desc: Description, usage: Usage) -> Result<Class> {
@@ -514,7 +514,7 @@ pub trait Backend: Send + Sync {
         _mt: MemoryType,
         _dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 
     fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
@@ -544,7 +544,7 @@ pub trait Backend: Send + Sync {
         _copy: CopyBuffer,
         _sync_fd: Option<OwnedFd>,
     ) -> Result<Option<OwnedFd>> {
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 
     fn copy_buffer_image(
@@ -554,7 +554,7 @@ pub trait Backend: Send + Sync {
         _copy: CopyBufferImage,
         _sync_fd: Option<OwnedFd>,
     ) -> Result<Option<OwnedFd>> {
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 }
 

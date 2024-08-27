@@ -50,7 +50,7 @@ impl Builder {
         }
 
         if !utils::dma_heap_exists() {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let heap_fd = if let Some(heap_name) = self.heap_name {

@@ -18,12 +18,12 @@ impl Device {
 
         for backend in &self.backends {
             match backend.memory_plane_count(fmt, modifier) {
-                Err(Error::NoSupport) => (),
+                Err(Error::Unsupported) => (),
                 res => return res,
             }
         }
 
-        Err(Error::NoSupport)
+        Error::unsupported()
     }
 
     pub fn classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
@@ -73,13 +73,13 @@ impl Device {
                 if required_idx.is_none() {
                     required_idx = Some(idx);
                 } else {
-                    return Err(Error::NoSupport);
+                    return Error::unsupported();
                 }
             }
         }
 
         if max_extent.is_empty() {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let mods: Vec<Modifier> = if desc.is_buffer() {
@@ -87,7 +87,7 @@ impl Device {
         } else {
             let mods = mods.unwrap_or_default();
             if mods.is_empty() {
-                return Err(Error::NoSupport);
+                return Error::unsupported();
             }
 
             mods.into_iter().collect()

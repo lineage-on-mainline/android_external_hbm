@@ -42,7 +42,7 @@ pub fn open_drm_primary_device(
         return utils::open(&path);
     }
 
-    Err(Error::NoSupport)
+    Error::unsupported()
 }
 
 fn get_drm_usage(usage: super::Usage) -> Result<Usage> {
@@ -212,13 +212,13 @@ impl Backend {
             &self.overlay_formats
         };
 
-        let mods = fmts.get(&fmt).ok_or(Error::NoSupport)?;
+        let mods = fmts.get(&fmt).ok_or(Error::Unsupported)?;
 
         let mods = if modifier.is_invalid() {
             mods.clone()
         } else {
             if !mods.iter().any(|m| *m == modifier) {
-                return Err(Error::NoSupport);
+                return Error::unsupported();
             }
 
             vec![modifier]
@@ -231,7 +231,7 @@ impl Backend {
 impl super::Backend for Backend {
     fn classify(&self, desc: Description, usage: super::Usage) -> Result<Class> {
         if desc.is_buffer() {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let drm_usage = get_drm_usage(usage)?;
@@ -254,7 +254,7 @@ impl super::Backend for Backend {
 
         let fmt_class = formats::format_class(class.format)?;
         let size = (extent.width(), extent.height());
-        let fmt = DrmFourcc::try_from(class.format.0).or(Err(Error::NoSupport))?;
+        let fmt = DrmFourcc::try_from(class.format.0).or(Error::unsupported())?;
         let bpp = (fmt_class.block_size[0] as u32) * 8;
 
         let buf = self.device.create_dumb_buffer(size, fmt, bpp)?;
@@ -272,7 +272,7 @@ impl super::Backend for Backend {
             .plane_count(1)
             .stride(0, pitch as Size);
         if !layout.fit(con) {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let mut res = dma_buf::Resource::new(layout);
@@ -337,7 +337,7 @@ impl Builder {
         }
 
         if !utils::drm_exists() {
-            return Err(Error::NoSupport);
+            return Error::unsupported();
         }
 
         let node_fd = if let Some(fd) = self.node_fd {

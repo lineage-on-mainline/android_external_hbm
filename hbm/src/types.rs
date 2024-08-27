@@ -9,6 +9,10 @@ use std::{ffi, fmt, io, num, ptr, result};
 pub enum Error {
     #[error("{0}")]
     Context(&'static str),
+    #[error("bad user input")]
+    User,
+    #[error("unsupported")]
+    Unsupported,
     #[error("{0}")]
     Io(#[from] io::Error),
     #[error("error code {0}")]
@@ -17,10 +21,6 @@ pub enum Error {
     IntegerConversion,
     #[error("bad string conversion")]
     StringConversion,
-    #[error("bad user input")]
-    User,
-    #[error("no support")]
-    NoSupport,
 }
 
 impl Error {
@@ -30,6 +30,10 @@ impl Error {
 
     pub(crate) fn user<T>() -> Result<T> {
         Err(Error::User)
+    }
+
+    pub(crate) fn unsupported<T>() -> Result<T> {
+        Err(Error::Unsupported)
     }
 }
 

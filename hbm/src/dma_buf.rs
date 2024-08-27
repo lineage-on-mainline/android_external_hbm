@@ -60,12 +60,12 @@ impl AsMut<Resource> for Handle {
 
 pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
     if !desc.is_buffer() && !desc.modifier.is_linear() {
-        return Err(Error::NoSupport);
+        return Error::unsupported();
     }
 
     let unsupported_flags = Flags::PROTECTED;
     if desc.flags.intersects(unsupported_flags) {
-        return Err(Error::NoSupport);
+        return Error::unsupported();
     }
 
     let class = Class::new(&desc)

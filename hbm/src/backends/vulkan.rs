@@ -181,7 +181,7 @@ fn get_memory(handle: &Handle) -> Result<&sash::Memory> {
     let mem = match &handle.payload {
         HandlePayload::Buffer(buf) => buf.memory(),
         HandlePayload::Image(img) => img.memory(),
-        _ => return Err(Error::NoSupport),
+        _ => return Error::unsupported(),
     };
 
     Ok(mem)
@@ -191,7 +191,7 @@ fn get_memory_size(handle: &Handle) -> Result<vk::DeviceSize> {
     let size = match &handle.payload {
         HandlePayload::Buffer(buf) => buf.size(),
         HandlePayload::Image(img) => img.size(),
-        _ => return Err(Error::NoSupport),
+        _ => return Error::unsupported(),
     };
 
     Ok(size)
@@ -200,7 +200,7 @@ fn get_memory_size(handle: &Handle) -> Result<vk::DeviceSize> {
 fn get_buffer(handle: &Handle) -> Result<&sash::Buffer> {
     let buf = match &handle.payload {
         HandlePayload::Buffer(buf) => buf,
-        _ => return Err(Error::NoSupport),
+        _ => return Error::unsupported(),
     };
 
     Ok(buf)
@@ -209,7 +209,7 @@ fn get_buffer(handle: &Handle) -> Result<&sash::Buffer> {
 fn get_image(handle: &Handle) -> Result<&sash::Image> {
     let img = match &handle.payload {
         HandlePayload::Image(img) => img,
-        _ => return Err(Error::NoSupport),
+        _ => return Error::unsupported(),
     };
 
     Ok(img)
@@ -285,7 +285,7 @@ impl super::Backend for Backend {
                         .copied()
                         .collect();
                     if filtered_modifiers.is_empty() {
-                        return Err(Error::NoSupport);
+                        return Error::unsupported();
                     }
 
                     modifiers = &filtered_modifiers;
@@ -371,7 +371,7 @@ impl super::Backend for Backend {
                 let mt_idx = best_mt_index(mts, mt)?;
                 img.bind_memory(mt_idx, dmabuf)
             }
-            _ => Err(Error::NoSupport),
+            _ => Error::unsupported(),
         }
     }
 
