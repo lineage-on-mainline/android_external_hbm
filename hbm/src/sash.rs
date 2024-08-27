@@ -105,7 +105,7 @@ unsafe extern "system" fn debug_utils_messenger(
     let data = unsafe { &*data };
 
     let msg_id = if !data.p_message_id_name.is_null() {
-        // SAFETY: it is valid utf-8
+        // SAFETY: p_message_id_name is a valid utf8 c-string
         let cstr = unsafe { ffi::CStr::from_ptr(data.p_message_id_name) };
         Some(cstr.to_str().unwrap())
     } else {
@@ -113,7 +113,7 @@ unsafe extern "system" fn debug_utils_messenger(
     };
 
     let msg = if !data.p_message.is_null() {
-        // SAFETY: it is valid utf-8
+        // SAFETY: p_message is a valid utf8 c-string
         let cstr = unsafe { ffi::CStr::from_ptr(data.p_message) };
         Some(cstr.to_str().unwrap())
     } else {
@@ -152,12 +152,12 @@ impl Instance {
     }
 
     fn get_enabled_extensions(entry: &ash::Entry) -> Vec<*const ffi::c_char> {
-        // SAFETY: entry is valid
+        // SAFETY: no VUID violation
         let exts = unsafe { entry.enumerate_instance_extension_properties(None) };
         let exts = exts.unwrap_or_default();
 
         let has_debug_utils = exts.iter().any(|ext| {
-            // SAFETY: vk spec guarantees valid c-string
+            // SAFETY: extension_name is a valid utf8 c-string
             let name = unsafe { ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
             name == ash::ext::debug_utils::NAME
         });
@@ -170,7 +170,7 @@ impl Instance {
     }
 
     fn create_instance(entry: &ash::Entry, app_name: &str, debug: bool) -> Result<ash::Instance> {
-        // SAFETY: good
+        // SAFETY: no VUID violation
         let ver = unsafe { entry.try_enumerate_instance_version() }?;
 
         let ver = ver.unwrap_or(vk::API_VERSION_1_0);
@@ -206,7 +206,7 @@ impl Instance {
                 .push_next(&mut msg_info);
         }
 
-        // SAFETY: entry and instance_info are valid
+        // SAFETY: no VUID violation
         let handle = unsafe { entry.create_instance(&instance_info, None) }?;
 
         Ok(handle)
@@ -215,7 +215,7 @@ impl Instance {
 
 impl Drop for Instance {
     fn drop(&mut self) {
-        // SAFETY: handle is owned
+        // SAFETY: no VUID violation
         unsafe {
             self.handle.destroy_instance(None);
         }
@@ -278,7 +278,7 @@ impl PhysicalDevice {
     }
 
     fn init(&mut self, dev_idx: Option<usize>, dev_id: Option<u64>) -> Result<DeviceCreateInfo> {
-        // SAFETY: instance is valid
+        // SAFETY: no VUID violation
         let handles = unsafe { self.instance.handle.enumerate_physical_devices() }?;
 
         handles
@@ -323,7 +323,7 @@ impl PhysicalDevice {
         dev_id: Option<u64>,
         dev_info: &mut DeviceCreateInfo,
     ) -> Result<()> {
-        // SAFETY: instance and handle are valid
+        // SAFETY: no VUID violation
         let exts = unsafe {
             self.instance
                 .handle
@@ -336,7 +336,7 @@ impl PhysicalDevice {
             assert_eq!(id as usize, idx);
 
             dev_info.extensions[idx] = exts.iter().any(|ext| {
-                // SAFETY: vk spec guarantees valid c-string
+                // SAFETY: extension_name is a valid utf8 c-string
                 let ext_name = unsafe { ffi::CStr::from_ptr(ext.extension_name.as_ptr()) };
                 ext_name == name
             });
@@ -368,7 +368,7 @@ impl PhysicalDevice {
             props = props.push_next(&mut drm_props);
         }
 
-        // SAFETY: handle and props are valid
+        // SAFETY: no VUID violation
         unsafe {
             self.instance
                 .handle
@@ -422,7 +422,7 @@ impl PhysicalDevice {
             .push_next(&mut mem_prot_feats)
             .push_next(&mut img_comp_feats);
 
-        // SAFETY: handle is valid
+        // SAFETY: no VUID violation
         unsafe {
             self.instance
                 .handle
@@ -436,7 +436,7 @@ impl PhysicalDevice {
     }
 
     fn probe_queue_families(&mut self) -> Result<()> {
-        // SAFETY: handles are valid
+        // SAFETY: no VUID violation
         let props_list = unsafe {
             self.instance
                 .handle
@@ -468,7 +468,7 @@ impl PhysicalDevice {
     }
 
     fn probe_memory_types(&mut self) -> Result<()> {
-        // SAFETY: handle is valid
+        // SAFETY: no VUID violation
         let props = unsafe {
             self.instance
                 .handle
@@ -492,7 +492,7 @@ impl PhysicalDevice {
         let mut mod_props_list = vk::DrmFormatModifierPropertiesListEXT::default();
         let mut props = vk::FormatProperties2::default().push_next(&mut mod_props_list);
 
-        // SAFETY: valid
+        // SAFETY: no VUID violation
         unsafe {
             self.instance.handle.get_physical_device_format_properties2(
                 self.handle,
@@ -512,7 +512,7 @@ impl PhysicalDevice {
                 .drm_format_modifier_properties(&mut mods);
             let mut props = vk::FormatProperties2::default().push_next(&mut mod_props_list);
 
-            // SAFETY: valid
+            // SAFETY: no VUID violation
             unsafe {
                 self.instance.handle.get_physical_device_format_properties2(
                     self.handle,
@@ -587,7 +587,7 @@ impl PhysicalDevice {
         self.properties.external_memory_type = if self.properties.ext_image_drm_format_modifier {
             vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT
         } else {
-            // assume OPAQUE_FD is actually dma-buf
+            // OPAQUE_FD is actually dma-buf on radv
             vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD
         };
 
@@ -663,9 +663,9 @@ impl Default for WsiImageCreateInfoMESA {
     }
 }
 
-// SAFETY: ok
+// SAFETY: only on radv+gfx8
 unsafe impl vk::ExtendsPhysicalDeviceImageFormatInfo2 for WsiImageCreateInfoMESA {}
-// SAFETY: ok
+// SAFETY: only on radv+gfx8
 unsafe impl vk::ExtendsImageCreateInfo for WsiImageCreateInfoMESA {}
 
 struct DeviceDispatch {
@@ -757,7 +757,7 @@ impl Device {
             .enabled_extension_names(&enabled_exts)
             .push_next(&mut feats);
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         let handle = unsafe {
             physical_dev
                 .instance
@@ -777,7 +777,7 @@ impl Device {
     }
 
     fn init(&mut self) -> Result<()> {
-        // SAFETY: good
+        // SAFETY: queue_family has 1 queue
         self.queue = unsafe {
             self.handle
                 .get_device_queue(self.properties().queue_family, 0)
@@ -838,7 +838,7 @@ impl Device {
                 .handle_type(self.properties().external_memory_type);
             let mut external_props = vk::ExternalBufferProperties::default();
 
-            // SAFETY: good
+            // SAFETY: no VUID violation
             unsafe {
                 self.instance_handle()
                     .get_physical_device_external_buffer_properties(
@@ -922,7 +922,7 @@ impl Device {
             fmt_props = fmt_props.push_next(&mut external_props)
         }
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation except for on radv+gfx8
         unsafe {
             self.instance_handle()
                 .get_physical_device_image_format_properties2(
@@ -1034,7 +1034,9 @@ impl Device {
         let external_memory_type = vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT;
 
         let mut fd_props = vk::MemoryFdPropertiesKHR::default();
-        // SAFETY: ok
+
+        // SAFETY: VUID-vkGetMemoryFdPropertiesKHR-fd-00673 violation if dmabuf does not have the
+        // correct memory handle type
         let _ = unsafe {
             self.dispatch.memory.get_memory_fd_properties(
                 external_memory_type,
@@ -1066,7 +1068,7 @@ impl Device {
             vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => {
                 let mut mod_props = vk::ImageDrmFormatModifierPropertiesEXT::default();
 
-                // SAFETY: good
+                // SAFETY: no VUID violation
                 unsafe {
                     self.dispatch
                         .modifier
@@ -1097,7 +1099,6 @@ impl Device {
                 3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
                 _ => unreachable!(),
             },
-            // violate VUID-vkGetImageSubresourceLayout-image-07790 for vk::ImageTiling::OPTIMAL
             vk::ImageTiling::LINEAR | vk::ImageTiling::OPTIMAL => match plane {
                 0 => {
                     if mem_plane_count > 1 {
@@ -1132,7 +1133,8 @@ impl Device {
             let aspect = self.get_image_subresource_aspect(tiling, mem_plane_count, plane);
             let subres = vk::ImageSubresource::default().aspect_mask(aspect);
 
-            // SAFETY: good
+            // SAFETY: VUID-vkGetImageSubresourceLayout-image-07790 violation when tiling is
+            // vk::ImageTiling::OPTIMAL (only on radv+gfx8)
             let subres_layout = unsafe { self.handle.get_image_subresource_layout(handle, subres) };
 
             layout.offsets[plane as usize] = subres_layout.offset;
@@ -1218,7 +1220,7 @@ impl Device {
             .buffer(buf)
             .size(vk::WHOLE_SIZE);
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         unsafe {
             self.handle.cmd_pipeline_barrier(
                 cmd,
@@ -1253,7 +1255,8 @@ impl Device {
             .image(img)
             .subresource_range(img_subres);
 
-        // SAFETY: good
+        // SAFETY: VUID-VkImageMemoryBarrier-oldLayout-01197 violation on first image acquire (see
+        // get_pipeline_barrier_scope)
         unsafe {
             self.handle.cmd_pipeline_barrier(
                 cmd,
@@ -1278,7 +1281,7 @@ impl Device {
         self.cmd_buffer_barrier(cmd.handle, src, src_acquire);
         self.cmd_buffer_barrier(cmd.handle, dst, dst_acquire);
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         unsafe {
             self.handle
                 .cmd_copy_buffer(cmd.handle, src, dst, slice::from_ref(&region));
@@ -1308,7 +1311,7 @@ impl Device {
         self.cmd_image_barrier(cmd.handle, img, img_aspect, img_acquire);
         self.cmd_buffer_barrier(cmd.handle, buf, buf_acquire);
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         unsafe {
             self.handle.cmd_copy_image_to_buffer(
                 cmd.handle,
@@ -1343,7 +1346,7 @@ impl Device {
         self.cmd_buffer_barrier(cmd.handle, buf, buf_acquire);
         self.cmd_image_barrier(cmd.handle, img, img_aspect, img_acquire);
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         unsafe {
             self.handle.cmd_copy_buffer_to_image(
                 cmd.handle,
@@ -1365,7 +1368,7 @@ impl Drop for Device {
     fn drop(&mut self) {
         self.command_buffer.destroy(self);
 
-        // SAFETY: handle is owned
+        // SAFETY: no VUID violation
         unsafe {
             self.handle.destroy_device(None);
         }
@@ -1389,15 +1392,14 @@ impl<'a> CommandBufferSession<'a> {
     fn execute(self) -> Result<()> {
         self.end()?;
         self.submit()?;
-        self.wait()?;
-        self.reset()
+        self.wait()
     }
 
     fn begin(&self) -> Result<()> {
         let begin_info = vk::CommandBufferBeginInfo::default()
             .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation becase we always pair new() and execute()
         unsafe {
             self.device
                 .handle
@@ -1407,13 +1409,13 @@ impl<'a> CommandBufferSession<'a> {
     }
 
     fn end(&self) -> Result<()> {
-        // SAFETY: ok
+        // SAFETY: no VUID violation becase we always pair new() and execute()
         unsafe { self.device.handle.end_command_buffer(self.handle) }.map_err(Error::from)
     }
 
     fn submit(&self) -> Result<()> {
         let submit_info = vk::SubmitInfo::default().command_buffers(slice::from_ref(&self.handle));
-        // SAFETY: ok
+        // SAFETY: TODO: potential host synchronization violation
         unsafe {
             self.device.handle.queue_submit(
                 self.device.queue,
@@ -1425,18 +1427,9 @@ impl<'a> CommandBufferSession<'a> {
     }
 
     fn wait(&self) -> Result<()> {
-        // SAFETY: ok
+        // SAFETY: TODO: potential host synchronization violation; also the cmd is not usable
+        // anymore on errors
         unsafe { self.device.handle.queue_wait_idle(self.device.queue) }.map_err(Error::from)
-    }
-
-    fn reset(&self) -> Result<()> {
-        // SAFETY: ok
-        unsafe {
-            self.device
-                .handle
-                .reset_command_buffer(self.handle, vk::CommandBufferResetFlags::empty())
-        }
-        .map_err(Error::from)
     }
 }
 
@@ -1460,12 +1453,12 @@ impl CommandBuffer {
             .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
             .queue_family_index(dev.properties().queue_family);
 
-        // SAFETY:
+        // SAFETY: no VUID violation
         unsafe { dev.handle.create_command_pool(&pool_info, None) }.map_err(Error::from)
     }
 
     fn destroy_command_pool(dev: &Device, pool: vk::CommandPool) {
-        // SAFETY: ok
+        // SAFETY: no VUID violation
         unsafe {
             dev.handle.destroy_command_pool(pool, None);
         }
@@ -1477,7 +1470,7 @@ impl CommandBuffer {
             .level(vk::CommandBufferLevel::PRIMARY)
             .command_buffer_count(1);
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation
         let cmds = unsafe { dev.handle.allocate_command_buffers(&alloc_info) }?;
 
         Ok(cmds[0])
@@ -1594,7 +1587,6 @@ impl Memory {
             mem_info = mem_info.push_next(&mut export_info);
         }
 
-        // VUID-VkImportMemoryFdInfoKHR-fd-00668 seems bogus
         let mut raw_fd: RawFd = -1;
         let mut import_info = vk::ImportMemoryFdInfoKHR::default();
         if let Some(dmabuf) = dmabuf {
@@ -1610,12 +1602,22 @@ impl Memory {
             mem_info = mem_info.push_next(&mut import_info);
         }
 
-        // SAFETY: good
+        // SAFETY:
+        //
+        //  - VUID-VkImportMemoryFdInfoKHR-fd-00668 violation which seems bogus
+        //  - VUID-VkImportMemoryFdInfoKHR-handleType-00670 violation if dmabuf does not have the
+        //    correct memory handle type
+        //  - we don't validate dma-buf size because drivers are required to perform sufficient
+        //    validations
+        //  - on radv+gfx, potential VUID violations for
+        //    - VUID-VkMemoryAllocateInfo-allocationSize-01742
+        //    - VUID-VkMemoryDedicatedAllocateInfo-image-01878
+        //    - VUID-VkMemoryDedicatedAllocateInfo-buffer-01879
         let handle = unsafe { dev.handle.allocate_memory(&mem_info, None) };
 
         let handle = handle.map_err(|err| {
             if raw_fd >= 0 {
-                // SAFETY: close the opened raw fd
+                // SAFETY: raw_fd is from dmabuf.into_raw_fd
                 unsafe {
                     OwnedFd::from_raw_fd(raw_fd);
                 }
@@ -1632,9 +1634,9 @@ impl Memory {
             .memory(self.handle)
             .handle_type(self.device.properties().external_memory_type);
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         let raw_fd = unsafe { self.device.dispatch.memory.get_memory_fd(&fd_info) }?;
-        // SAFETY: ok
+        // SAFETY: raw_fd is a valid dma-buf
         let dmabuf = unsafe { OwnedFd::from_raw_fd(raw_fd) };
 
         Ok(dmabuf)
@@ -1643,7 +1645,7 @@ impl Memory {
     pub fn map(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<*mut ffi::c_void> {
         let flags = vk::MemoryMapFlags::empty();
 
-        // SAFETY: good
+        // SAFETY: no VUID violation becase the caller always maps the entire memory
         let ptr = unsafe {
             self.device
                 .handle
@@ -1654,7 +1656,7 @@ impl Memory {
     }
 
     pub fn unmap(&self) {
-        // SAFETY: ok
+        // SAFETY: no VUID violation
         unsafe { self.device.handle.unmap_memory(self.handle) };
     }
 
@@ -1664,7 +1666,7 @@ impl Memory {
             .offset(offset)
             .size(size);
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation because the caller always flushes the entire memory
         let _ = unsafe {
             self.device
                 .handle
@@ -1678,7 +1680,7 @@ impl Memory {
             .offset(offset)
             .size(size);
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation because the caller always invalidates the entire memory
         let _ = unsafe {
             self.device
                 .handle
@@ -1689,7 +1691,7 @@ impl Memory {
 
 impl Drop for Memory {
     fn drop(&mut self) {
-        // SAFETY: handle is owned
+        // SAFETY: no VUID violation
         unsafe {
             self.device.handle.free_memory(self.handle, None);
         }
@@ -1778,7 +1780,7 @@ impl Buffer {
             buf_info = buf_info.push_next(&mut external_info);
         }
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         let handle = unsafe { dev.handle.create_buffer(&buf_info, None) }?;
 
         Ok(handle)
@@ -1788,7 +1790,7 @@ impl Buffer {
         let reqs_info = vk::BufferMemoryRequirementsInfo2::default().buffer(self.handle);
         let mut reqs = vk::MemoryRequirements2::default();
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         unsafe {
             self.device
                 .handle
@@ -1819,7 +1821,7 @@ impl Buffer {
             .buffer(self.handle)
             .memory(mem.handle);
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation
         unsafe {
             self.device
                 .handle
@@ -1855,7 +1857,7 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        // SAFETY: handle is owned
+        // SAFETY: no VUID violation
         unsafe {
             self.device.handle.destroy_buffer(self.handle, None);
         }
@@ -2059,7 +2061,7 @@ impl Image {
             img_info = img_info.push_next(&mut wsi_info);
         }
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation except for on radv+gfx8
         let handle = unsafe { dev.handle.create_image(&img_info, None) }?;
 
         Ok(handle)
@@ -2069,7 +2071,7 @@ impl Image {
         let reqs_info = vk::ImageMemoryRequirementsInfo2::default().image(self.handle);
         let mut reqs = vk::MemoryRequirements2::default();
 
-        // SAFETY: good
+        // SAFETY: no VUID violation
         unsafe {
             self.device
                 .handle
@@ -2106,7 +2108,7 @@ impl Image {
             .image(self.handle)
             .memory(mem.handle);
 
-        // SAFETY: ok
+        // SAFETY: no VUID violation
         unsafe {
             self.device
                 .handle
@@ -2167,7 +2169,7 @@ impl Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        // SAFETY: handle is owned
+        // SAFETY: no VUID violation
         unsafe {
             self.device.handle.destroy_image(self.handle, None);
         }
