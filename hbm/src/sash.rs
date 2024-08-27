@@ -1427,15 +1427,19 @@ impl<'a> CommandBufferSession<'a> {
     }
 
     fn wait(&self) -> Result<()> {
-        // SAFETY: TODO: potential host synchronization violation; also the cmd is not usable
-        // anymore on errors
-        unsafe { self.device.handle.queue_wait_idle(self.device.queue) }.map_err(Error::from)
+        // SAFETY: TODO: potential host synchronization violation
+        let res = unsafe { self.device.handle.queue_wait_idle(self.device.queue) };
+        res.map_err(|e| {
+            self.device.command_buffer.mark_unusable();
+            Error::from(e)
+        })
     }
 }
 
 struct CommandBuffer {
     pool: vk::CommandPool,
     handle: vk::CommandBuffer,
+    usable: bool,
 }
 
 impl CommandBuffer {
@@ -1443,7 +1447,11 @@ impl CommandBuffer {
         let pool = Self::create_command_pool(dev)?;
         let handle = Self::allocate_command_buffer(dev, pool)
             .inspect_err(|_| Self::destroy_command_pool(dev, pool))?;
-        let cmd = Self { pool, handle };
+        let cmd = Self {
+            pool,
+            handle,
+            usable: true,
+        };
 
         Ok(cmd)
     }
@@ -1489,18 +1497,24 @@ struct PerThreadCommandBuffer {
 impl PerThreadCommandBuffer {
     fn session<'a>(&self, dev: &'a Device) -> Result<CommandBufferSession<'a>> {
         let handle = match self.lookup() {
-            Some(handle) => handle,
+            Some((handle, usable)) => {
+                if usable {
+                    handle
+                } else {
+                    return Err(Error::NoSupport);
+                }
+            }
             None => self.create(dev)?,
         };
 
         CommandBufferSession::new(dev, handle)
     }
 
-    fn lookup(&self) -> Option<vk::CommandBuffer> {
+    fn lookup(&self) -> Option<(vk::CommandBuffer, bool)> {
         let tid = thread::current().id();
         let cmds = self.cmds.lock().unwrap();
 
-        cmds.get(&tid).map(|cmd| cmd.handle)
+        cmds.get(&tid).map(|cmd| (cmd.handle, cmd.usable))
     }
 
     fn create(&self, dev: &Device) -> Result<vk::CommandBuffer> {
@@ -1513,6 +1527,15 @@ impl PerThreadCommandBuffer {
         cmds.insert(tid, cmd);
 
         Ok(handle)
+    }
+
+    fn mark_unusable(&self) {
+        let tid = thread::current().id();
+        let mut cmds = self.cmds.lock().unwrap();
+
+        cmds.entry(tid).and_modify(|cmd| {
+            cmd.usable = false;
+        });
     }
 
     fn destroy(&self, dev: &Device) {
