@@ -1449,16 +1449,21 @@ struct CommandBuffer {
 
 impl CommandBuffer {
     fn new(dev: &Device) -> Result<Self> {
-        let pool = Self::create_command_pool(dev)?;
-        let handle = Self::allocate_command_buffer(dev, pool)
-            .inspect_err(|_| Self::destroy_command_pool(dev, pool))?;
-        let cmd = Self {
-            pool,
-            handle,
+        let mut cmd = Self {
+            pool: Default::default(),
+            handle: Default::default(),
             usable: true,
         };
+        cmd.init(dev).inspect_err(|_| cmd.destroy(dev))?;
 
         Ok(cmd)
+    }
+
+    fn init(&mut self, dev: &Device) -> Result<()> {
+        self.pool = Self::create_command_pool(dev)?;
+        self.handle = Self::allocate_command_buffer(dev, self.pool)?;
+
+        Ok(())
     }
 
     fn create_command_pool(dev: &Device) -> Result<vk::CommandPool> {
@@ -1489,7 +1494,7 @@ impl CommandBuffer {
         Ok(cmds[0])
     }
 
-    fn destroy(self, dev: &Device) {
+    fn destroy(&self, dev: &Device) {
         Self::destroy_command_pool(dev, self.pool);
     }
 }
