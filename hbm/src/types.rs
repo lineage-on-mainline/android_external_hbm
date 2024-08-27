@@ -7,25 +7,37 @@ use std::{ffi, fmt, io, num, ptr, result};
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("{0}")]
+    Context(&'static str),
+    #[error("{0}")]
+    Io(#[from] io::Error),
+    #[error("error code {0}")]
+    Code(i32),
+    #[error("bad integer conversion")]
+    IntegerConversion,
+    #[error("bad string conversion")]
+    StringConversion,
     #[error("no support")]
     NoSupport,
     #[error("invalid parameter")]
     InvalidParam,
-    #[error("device io")]
-    DeviceIo(#[from] io::Error),
-    #[error("loading error")]
-    LoadingError,
 }
 
-impl From<ffi::NulError> for Error {
-    fn from(err: ffi::NulError) -> Self {
-        Self::from(io::Error::from(err))
+impl Error {
+    pub(crate) fn ctx<T>(s: &'static str) -> Result<T> {
+        Err(Error::Context(s))
     }
 }
 
 impl From<num::TryFromIntError> for Error {
     fn from(_err: num::TryFromIntError) -> Self {
-        Self::InvalidParam
+        Self::IntegerConversion
+    }
+}
+
+impl From<ffi::NulError> for Error {
+    fn from(_err: ffi::NulError) -> Self {
+        Self::StringConversion
     }
 }
 
@@ -36,16 +48,9 @@ impl From<nix::Error> for Error {
 }
 
 #[cfg(feature = "ash")]
-impl From<ash::LoadingError> for Error {
-    fn from(_err: ash::LoadingError) -> Self {
-        Self::LoadingError
-    }
-}
-
-#[cfg(feature = "ash")]
 impl From<ash::vk::Result> for Error {
-    fn from(_err: ash::vk::Result) -> Self {
-        Self::LoadingError
+    fn from(err: ash::vk::Result) -> Self {
+        Self::Code(err.as_raw())
     }
 }
 

@@ -6,7 +6,6 @@ use super::formats;
 use super::types::{Error, Modifier, Result, Size};
 use super::utils;
 use ash::vk;
-use log::{debug, warn};
 use std::collections::HashMap;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 use std::sync::{Arc, Mutex};
@@ -146,7 +145,7 @@ impl Instance {
 
     fn create_entry() -> Result<ash::Entry> {
         // SAFETY: we trust ash and the vulkan implementation
-        let entry = unsafe { ash::Entry::load() }?;
+        let entry = unsafe { ash::Entry::load() }.or(Error::ctx("failed to load ash entry"))?;
 
         Ok(entry)
     }
@@ -174,7 +173,7 @@ impl Instance {
         let ver = unsafe { entry.try_enumerate_instance_version() }?;
 
         let ver = ver.unwrap_or(vk::API_VERSION_1_0);
-        has_api_version(ver)?;
+        has_api_version(ver).or(Error::ctx("unsupported api version"))?;
 
         let c_name = ffi::CString::new(app_name)?;
         let app_info = vk::ApplicationInfo::default()
@@ -207,7 +206,8 @@ impl Instance {
         }
 
         // SAFETY: no VUID violation
-        let handle = unsafe { entry.create_instance(&instance_info, None) }?;
+        let handle = unsafe { entry.create_instance(&instance_info, None) }
+            .or(Error::ctx("failed to create instance"))?;
 
         Ok(handle)
     }
@@ -279,21 +279,20 @@ impl PhysicalDevice {
 
     fn init(&mut self, dev_idx: Option<usize>, dev_id: Option<u64>) -> Result<DeviceCreateInfo> {
         // SAFETY: no VUID violation
-        let handles = unsafe { self.instance.handle.enumerate_physical_devices() }?;
+        let handles = unsafe { self.instance.handle.enumerate_physical_devices() }
+            .or(Error::ctx("failed to enumerate devices"))?;
 
-        handles
-            .into_iter()
-            .enumerate()
-            .find_map(|(idx, handle)| {
-                if let Some(dev_idx) = dev_idx {
-                    if dev_idx != idx {
-                        return None;
-                    }
+        let dev_info = handles.into_iter().enumerate().find_map(|(idx, handle)| {
+            if let Some(dev_idx) = dev_idx {
+                if dev_idx != idx {
+                    return None;
                 }
+            }
 
-                self.probe(handle, dev_id).ok()
-            })
-            .ok_or(Error::InvalidParam)
+            self.probe(handle, dev_id).ok()
+        });
+
+        dev_info.ok_or(Error::Context("failed to find any device"))
     }
 
     fn probe(
@@ -308,12 +307,12 @@ impl PhysicalDevice {
         let mut dev_info = Default::default();
         self.probe_extensions(dev_id, &mut dev_info)?;
         self.probe_properties(dev_id)?;
-        self.probe_features()?;
+        self.probe_features();
         self.probe_queue_families()?;
-        self.probe_memory_types()?;
-        self.probe_formats()?;
+        self.probe_memory_types();
+        self.probe_formats();
 
-        self.probe_external_memory()?;
+        self.probe_external_memory();
 
         Ok(dev_info)
     }
@@ -400,7 +399,7 @@ impl PhysicalDevice {
             //
             // TODO add modifiers to amdgpu gfx8
             if self.properties.driver_id == vk::DriverId::MESA_RADV {
-                warn!("no VK_EXT_image_drm_format_modifier support");
+                log::warn!("no VK_EXT_image_drm_format_modifier support");
             } else {
                 return Err(Error::NoSupport);
             }
@@ -415,7 +414,7 @@ impl PhysicalDevice {
         Ok(())
     }
 
-    fn probe_features(&mut self) -> Result<()> {
+    fn probe_features(&mut self) {
         let mut mem_prot_feats = vk::PhysicalDeviceProtectedMemoryFeatures::default();
         let mut img_comp_feats = vk::PhysicalDeviceImageCompressionControlFeaturesEXT::default();
         let mut feats = vk::PhysicalDeviceFeatures2::default()
@@ -431,8 +430,6 @@ impl PhysicalDevice {
 
         self.properties.protected_memory = mem_prot_feats.protected_memory > 0;
         self.properties.image_compression_control = img_comp_feats.image_compression_control > 0;
-
-        Ok(())
     }
 
     fn probe_queue_families(&mut self) -> Result<()> {
@@ -467,7 +464,7 @@ impl PhysicalDevice {
         Ok(())
     }
 
-    fn probe_memory_types(&mut self) -> Result<()> {
+    fn probe_memory_types(&mut self) {
         // SAFETY: no VUID violation
         let props = unsafe {
             self.instance
@@ -480,8 +477,6 @@ impl PhysicalDevice {
             .iter()
             .map(|mt| mt.property_flags)
             .collect();
-
-        Ok(())
     }
 
     fn get_format_properties(
@@ -556,7 +551,7 @@ impl PhysicalDevice {
         }
     }
 
-    fn probe_formats(&mut self) -> Result<()> {
+    fn probe_formats(&mut self) {
         for drm_fmt in formats::KNOWN_FORMATS {
             /* some drm formats cannot be mapped */
             let fmt = formats::to_vk(drm_fmt);
@@ -572,6 +567,9 @@ impl PhysicalDevice {
 
             let fmt_class = formats::format_class(drm_fmt).unwrap();
             let mods = self.get_format_properties(fmt, fmt_class.plane_count as u32);
+            if mods.is_empty() {
+                continue;
+            }
 
             let fmt_props = FormatProperties {
                 format_class: fmt_class,
@@ -579,19 +577,15 @@ impl PhysicalDevice {
             };
             self.properties.formats.insert(fmt, fmt_props);
         }
-
-        Ok(())
     }
 
-    fn probe_external_memory(&mut self) -> Result<()> {
+    fn probe_external_memory(&mut self) {
         self.properties.external_memory_type = if self.properties.ext_image_drm_format_modifier {
             vk::ExternalMemoryHandleTypeFlags::DMA_BUF_EXT
         } else {
             // OPAQUE_FD is actually dma-buf on radv
             vk::ExternalMemoryHandleTypeFlags::OPAQUE_FD
         };
-
-        Ok(())
     }
 }
 
@@ -689,13 +683,8 @@ impl Device {
         dev_id: Option<u64>,
         debug: bool,
     ) -> Result<Arc<Device>> {
-        debug!("initializing vulkan instance");
         let instance = Instance::new(name, debug)?;
-
-        debug!("initializing vulkan physical device");
         let (physical_dev, dev_info) = PhysicalDevice::new(instance, dev_idx, dev_id)?;
-
-        debug!("initializing vulkan device");
         let dev = Self::new(physical_dev, dev_info)?;
 
         Ok(Arc::new(dev))
@@ -715,7 +704,7 @@ impl Device {
             command_buffer: Default::default(),
         };
 
-        dev.init()?;
+        dev.init();
 
         Ok(dev)
     }
@@ -763,7 +752,8 @@ impl Device {
                 .instance
                 .handle
                 .create_device(physical_dev.handle, &dev_info, None)
-        }?;
+        }
+        .or(Error::ctx("failed to create device"))?;
 
         Ok(handle)
     }
@@ -776,7 +766,7 @@ impl Device {
         }
     }
 
-    fn init(&mut self) -> Result<()> {
+    fn init(&mut self) {
         // SAFETY: queue_family has 1 queue
         let queue = unsafe {
             self.handle
@@ -784,8 +774,6 @@ impl Device {
         };
 
         *self.queue.lock().unwrap() = queue;
-
-        Ok(())
     }
 
     fn instance_handle(&self) -> &ash::Instance {
