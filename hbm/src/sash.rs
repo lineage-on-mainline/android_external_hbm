@@ -1391,6 +1391,7 @@ impl<'a> CommandBufferSession<'a> {
             fence,
         };
 
+        cmd.reset()?;
         cmd.begin()?;
 
         Ok(cmd)
@@ -1400,6 +1401,16 @@ impl<'a> CommandBufferSession<'a> {
         self.end()?;
         self.submit()?;
         self.wait()
+    }
+
+    fn reset(&self) -> Result<()> {
+        // SAFETY: no VUID violation becase we always pair new() and execute()
+        unsafe {
+            self.device
+                .handle
+                .reset_fences(slice::from_ref(&self.fence))
+        }
+        .map_err(Error::from)
     }
 
     fn begin(&self) -> Result<()> {
@@ -1434,15 +1445,16 @@ impl<'a> CommandBufferSession<'a> {
 
     fn wait(&self) -> Result<()> {
         // SAFETY: no VUID violation
-        let res = unsafe {
+        unsafe {
             self.device
                 .handle
                 .wait_for_fences(slice::from_ref(&self.fence), true, u64::MAX)
-        };
-
-        res.map_err(|e| {
-            self.device.command_buffer.mark_unusable();
-            Error::from(e)
+        }
+        .map_err(|res| {
+            if res != vk::Result::ERROR_DEVICE_LOST {
+                self.device.command_buffer.mark_unusable();
+            }
+            Error::from(res)
         })
     }
 }
