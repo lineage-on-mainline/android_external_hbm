@@ -10,7 +10,7 @@ use super::formats;
 use super::types::{Access, Error, Format, Mapping, Result, Size};
 use super::utils;
 use std::os::fd::{BorrowedFd, OwnedFd};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
 struct BoState {
     bound: bool,
@@ -121,21 +121,6 @@ impl Bo {
         self.device.backend(self.backend_index)
     }
 
-    fn lock_state(&self) -> Result<MutexGuard<BoState>> {
-        let state = self.state.lock().unwrap();
-
-        if !state.bound {
-            return Err(Error::InvalidParam);
-        }
-
-        Ok(state)
-    }
-
-    fn is_bound(&self) -> bool {
-        let state = self.state.lock().unwrap();
-        state.bound
-    }
-
     pub fn layout(&self) -> Layout {
         self.backend().layout(&self.handle)
     }
@@ -169,7 +154,10 @@ impl Bo {
             return Err(Error::InvalidParam);
         }
 
-        let _state = self.lock_state()?;
+        let state = self.state.lock().unwrap();
+        if !state.bound {
+            return Err(Error::InvalidParam);
+        }
 
         self.backend().export_dma_buf(&self.handle, name)
     }
@@ -179,8 +167,8 @@ impl Bo {
             return Err(Error::InvalidParam);
         }
 
-        let mut state = self.lock_state()?;
-        if !state.mt.contains(MemoryType::MAPPABLE) {
+        let mut state = self.state.lock().unwrap();
+        if !state.bound || !state.mt.contains(MemoryType::MAPPABLE) {
             return Err(Error::InvalidParam);
         }
 
@@ -196,7 +184,7 @@ impl Bo {
     }
 
     pub fn unmap(&mut self) {
-        let mut state = self.lock_state().unwrap();
+        let mut state = self.state.lock().unwrap();
 
         match state.map_count {
             0 => (),
@@ -210,7 +198,7 @@ impl Bo {
     }
 
     pub fn flush(&self) {
-        let state = self.lock_state().unwrap();
+        let state = self.state.lock().unwrap();
 
         if state.map_count > 0 && !state.mt.contains(MemoryType::COHERENT) {
             self.backend().flush(&self.handle);
@@ -218,11 +206,17 @@ impl Bo {
     }
 
     pub fn invalidate(&self) {
-        let state = self.lock_state().unwrap();
+        let state = self.state.lock().unwrap();
 
         if state.map_count > 0 && !state.mt.contains(MemoryType::COHERENT) {
             self.backend().invalidate(&self.handle);
         }
+    }
+
+    // this should not be used if the mutex needs to remain locked for synchronization
+    fn is_bound(&self) -> bool {
+        let state = self.state.lock().unwrap();
+        state.bound
     }
 
     fn validate_copy(&self, src: &Bo) -> bool {
