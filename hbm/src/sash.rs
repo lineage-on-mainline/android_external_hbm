@@ -1380,11 +1380,16 @@ impl Drop for Device {
 struct CommandBufferSession<'a> {
     device: &'a Device,
     handle: vk::CommandBuffer,
+    fence: vk::Fence,
 }
 
 impl<'a> CommandBufferSession<'a> {
-    fn new(device: &'a Device, handle: vk::CommandBuffer) -> Result<Self> {
-        let cmd = Self { device, handle };
+    fn new(device: &'a Device, handle: vk::CommandBuffer, fence: vk::Fence) -> Result<Self> {
+        let cmd = Self {
+            device,
+            handle,
+            fence,
+        };
 
         cmd.begin()?;
 
@@ -1420,20 +1425,21 @@ impl<'a> CommandBufferSession<'a> {
         let queue = self.device.queue.lock().unwrap();
         // SAFETY: no VUID violation
         unsafe {
-            self.device.handle.queue_submit(
-                *queue,
-                slice::from_ref(&submit_info),
-                vk::Fence::null(),
-            )
+            self.device
+                .handle
+                .queue_submit(*queue, slice::from_ref(&submit_info), self.fence)
         }
         .map_err(Error::from)
     }
 
     fn wait(&self) -> Result<()> {
-        // TODO use a fence to avoid the lock
-        let queue = self.device.queue.lock().unwrap();
         // SAFETY: no VUID violation
-        let res = unsafe { self.device.handle.queue_wait_idle(*queue) };
+        let res = unsafe {
+            self.device
+                .handle
+                .wait_for_fences(slice::from_ref(&self.fence), true, u64::MAX)
+        };
+
         res.map_err(|e| {
             self.device.command_buffer.mark_unusable();
             Error::from(e)
@@ -1444,6 +1450,7 @@ impl<'a> CommandBufferSession<'a> {
 struct CommandBuffer {
     pool: vk::CommandPool,
     handle: vk::CommandBuffer,
+    fence: vk::Fence,
     usable: bool,
 }
 
@@ -1452,6 +1459,7 @@ impl CommandBuffer {
         let mut cmd = Self {
             pool: Default::default(),
             handle: Default::default(),
+            fence: Default::default(),
             usable: true,
         };
         cmd.init(dev).inspect_err(|_| cmd.destroy(dev))?;
@@ -1462,6 +1470,7 @@ impl CommandBuffer {
     fn init(&mut self, dev: &Device) -> Result<()> {
         self.pool = Self::create_command_pool(dev)?;
         self.handle = Self::allocate_command_buffer(dev, self.pool)?;
+        self.fence = Self::create_fence(dev)?;
 
         Ok(())
     }
@@ -1494,8 +1503,23 @@ impl CommandBuffer {
         Ok(cmds[0])
     }
 
+    fn create_fence(dev: &Device) -> Result<vk::Fence> {
+        let fence_info = vk::FenceCreateInfo::default();
+
+        // SAFETY: no VUID violation
+        unsafe { dev.handle.create_fence(&fence_info, None) }.map_err(Error::from)
+    }
+
+    fn destroy_fence(dev: &Device, fence: vk::Fence) {
+        // SAFETY: no VUID violation
+        unsafe {
+            dev.handle.destroy_fence(fence, None);
+        }
+    }
+
     fn destroy(&self, dev: &Device) {
         Self::destroy_command_pool(dev, self.pool);
+        Self::destroy_fence(dev, self.fence);
     }
 }
 
@@ -1506,10 +1530,10 @@ struct PerThreadCommandBuffer {
 
 impl PerThreadCommandBuffer {
     fn session<'a>(&self, dev: &'a Device) -> Result<CommandBufferSession<'a>> {
-        let handle = match self.lookup() {
-            Some((handle, usable)) => {
+        let (handle, fence) = match self.lookup() {
+            Some((handle, fence, usable)) => {
                 if usable {
-                    handle
+                    (handle, fence)
                 } else {
                     return Err(Error::NoSupport);
                 }
@@ -1517,26 +1541,28 @@ impl PerThreadCommandBuffer {
             None => self.create(dev)?,
         };
 
-        CommandBufferSession::new(dev, handle)
+        CommandBufferSession::new(dev, handle, fence)
     }
 
-    fn lookup(&self) -> Option<(vk::CommandBuffer, bool)> {
+    fn lookup(&self) -> Option<(vk::CommandBuffer, vk::Fence, bool)> {
         let tid = thread::current().id();
         let cmds = self.cmds.lock().unwrap();
 
-        cmds.get(&tid).map(|cmd| (cmd.handle, cmd.usable))
+        cmds.get(&tid)
+            .map(|cmd| (cmd.handle, cmd.fence, cmd.usable))
     }
 
-    fn create(&self, dev: &Device) -> Result<vk::CommandBuffer> {
+    fn create(&self, dev: &Device) -> Result<(vk::CommandBuffer, vk::Fence)> {
         let cmd = CommandBuffer::new(dev)?;
         let handle = cmd.handle;
+        let fence = cmd.fence;
 
         let tid = thread::current().id();
         let mut cmds = self.cmds.lock().unwrap();
 
         cmds.insert(tid, cmd);
 
-        Ok(handle)
+        Ok((handle, fence))
     }
 
     fn mark_unusable(&self) {
