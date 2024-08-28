@@ -172,6 +172,23 @@ test_image(struct hbm_device *dev)
 
     hbm_bo_destroy(img_bo);
 
+    uint64_t img_con_mods[1] = { img_desc.modifier };
+    const struct hbm_constraint img_con = {
+        .modifiers = img_con_mods,
+        .modifier_count = 1,
+    };
+    img_bo = hbm_bo_create_with_constraint(dev, &img_desc, &img_extent, &img_con);
+    if (!img_bo)
+        die("failed to create image bo with constraint");
+    hbm_bo_destroy(img_bo);
+    if (img_desc.modifier != DRM_FORMAT_MOD_INVALID) {
+        img_con_mods[0] = DRM_FORMAT_MOD_INVALID;
+        fprintf(stderr, "expecting failure by creating a bo with impossible constraint\n");
+        img_bo = hbm_bo_create_with_constraint(dev, &img_desc, &img_extent, &img_con);
+        if (img_bo)
+            die("unexpected img bo creation");
+    }
+
     img_bo = hbm_bo_create_with_layout(dev, &img_desc, &img_extent, &img_layout, img_dmabuf);
     if (!img_bo)
         die("failed to create image bo with layout");

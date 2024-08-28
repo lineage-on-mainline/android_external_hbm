@@ -10,7 +10,6 @@ use crate::sash;
 use crate::types::{Access, Error, Format, Mapping, Modifier, Result};
 use crate::utils;
 use ash::vk;
-use log::info;
 use std::os::fd::{BorrowedFd, OwnedFd};
 use std::sync::Arc;
 use std::{num, ptr};
@@ -225,7 +224,7 @@ impl Backend {
             device: sash::Device::build("hbm", device_index, device_id, debug)?,
         };
 
-        info!("vulkan backend initialized");
+        log::info!("vulkan backend initialized");
 
         Ok(backend)
     }
@@ -275,29 +274,12 @@ impl super::Backend for Backend {
         } else {
             let img_info = get_image_info(class.flags, class.format, class.usage)?;
 
-            let mut modifiers = &class.modifiers;
-            let filtered_modifiers: Vec<Modifier>;
-            if let Some(con) = &con {
-                if !con.modifiers.is_empty() {
-                    filtered_modifiers = modifiers
-                        .iter()
-                        .filter(|&m1| con.modifiers.iter().any(|m2| m2 == m1))
-                        .copied()
-                        .collect();
-                    if filtered_modifiers.is_empty() {
-                        return Error::unsupported();
-                    }
-
-                    modifiers = &filtered_modifiers;
-                }
-            }
-
             let img = sash::Image::with_constraint(
                 self.device.clone(),
                 img_info,
                 extent.width(),
                 extent.height(),
-                modifiers,
+                &class.modifiers,
                 con,
             )?;
 

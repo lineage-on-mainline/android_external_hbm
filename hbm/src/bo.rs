@@ -33,15 +33,29 @@ pub struct Bo {
     state: Mutex<BoState>,
 }
 
-fn merge_constraints(con: Option<Constraint>, other: Option<&Constraint>) -> Option<Constraint> {
-    if con.is_some() && other.is_some() {
-        con.map(|mut con| {
-            con.merge(other.cloned().unwrap());
-            con
-        })
-    } else {
-        con.or_else(|| other.cloned())
+fn merge_class_to_constraint(con: Option<Constraint>, class: &Class) -> Result<Option<Constraint>> {
+    if con.is_none() && class.constraint.is_none() {
+        return Ok(None);
     }
+
+    let mut con = con.unwrap_or_default();
+    if let Some(other) = &class.constraint {
+        con.merge(other.clone());
+    }
+
+    if !con.modifiers.is_empty() {
+        con.modifiers = con
+            .modifiers
+            .iter()
+            .filter(|m1| class.modifiers.iter().any(|m2| *m1 == m2))
+            .copied()
+            .collect();
+        if con.modifiers.is_empty() {
+            return Error::unsupported();
+        }
+    }
+
+    Ok(Some(con))
 }
 
 impl Bo {
@@ -74,7 +88,7 @@ impl Bo {
             return Error::user();
         }
 
-        let con = merge_constraints(con, class.constraint.as_ref());
+        let con = merge_class_to_constraint(con, class)?;
 
         let backend = device.backend(class.backend_index);
         let handle = backend.with_constraint(class, extent, con)?;

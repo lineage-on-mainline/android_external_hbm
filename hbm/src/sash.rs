@@ -1975,6 +1975,13 @@ impl Image {
         modifiers: &[Modifier],
         con: Option<Constraint>,
     ) -> Result<Self> {
+        let mut modifiers = modifiers;
+        if let Some(con) = &con {
+            if !con.modifiers.is_empty() {
+                modifiers = &con.modifiers;
+            }
+        }
+
         let tiling = dev.get_image_tiling(modifiers[0]);
         let handle =
             Self::create_implicit_image(&dev, tiling, &img_info, width, height, modifiers)?;
