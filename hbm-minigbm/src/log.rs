@@ -85,6 +85,7 @@ pub fn disable() {
     LOGGER.update_callback(Logger::nop_callback());
 }
 
+// helper trait to log Result::Err
 pub trait LogError {
     fn log_err<D>(self, act: D) -> Self
     where

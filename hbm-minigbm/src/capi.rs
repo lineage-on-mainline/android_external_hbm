@@ -69,38 +69,6 @@ pub struct hbm_device {
     _data: [u8; 0],
 }
 
-type ClassCache = HashMap<hbm_description, Arc<hbm::Class>>;
-
-struct CDevice {
-    device: Arc<hbm::Device>,
-    class_cache: Mutex<ClassCache>,
-}
-
-impl CDevice {
-    fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
-        let usage = hbm::Usage::Vulkan(c::usage(desc.usage));
-        let desc = hbm::Description::new()
-            .flags(c::flags(desc.flags))
-            .format(hbm::Format(desc.format))
-            .modifier(hbm::Modifier(desc.modifier));
-
-        self.device.classify(desc, slice::from_ref(&usage))
-    }
-
-    fn get_class<'a>(&self, desc: hbm_description) -> Result<Arc<hbm::Class>, hbm::Error> {
-        let mut class_cache = self.class_cache.lock().unwrap();
-        let class = match class_cache.entry(desc) {
-            Entry::Occupied(e) => e.into_mut(),
-            Entry::Vacant(e) => {
-                let class = self.classify(e.key())?;
-                e.insert(Arc::new(class))
-            }
-        };
-
-        Ok(class.clone())
-    }
-}
-
 /// A hardware buffer object (BO).
 ///
 /// This opaque struct represents a BO.  A BO can be allocated by HBM or imported from a dma-buf.
@@ -571,6 +539,38 @@ pub unsafe extern "C" fn hbm_log_init(
     super::log::enable(log_lv_max, Box::new(cb));
 }
 
+type ClassCache = HashMap<hbm_description, Arc<hbm::Class>>;
+
+struct CDevice {
+    device: Arc<hbm::Device>,
+    class_cache: Mutex<ClassCache>,
+}
+
+impl CDevice {
+    fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
+        let usage = hbm::Usage::Vulkan(c::usage(desc.usage));
+        let desc = hbm::Description::new()
+            .flags(c::flags(desc.flags))
+            .format(hbm::Format(desc.format))
+            .modifier(hbm::Modifier(desc.modifier));
+
+        self.device.classify(desc, slice::from_ref(&usage))
+    }
+
+    fn get_class<'a>(&self, desc: hbm_description) -> Result<Arc<hbm::Class>, hbm::Error> {
+        let mut class_cache = self.class_cache.lock().unwrap();
+        let class = match class_cache.entry(desc) {
+            Entry::Occupied(e) => e.into_mut(),
+            Entry::Vacant(e) => {
+                let class = self.classify(e.key())?;
+                e.insert(Arc::new(class))
+            }
+        };
+
+        Ok(class.clone())
+    }
+}
+
 /// Creates a device.
 ///
 /// # Safety
@@ -638,7 +638,7 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
 /// supported modifiers written to `out_mods` is returned.
 ///
 /// There is no supported modifier if the BO description is not supported, or if the device does
-/// not support modifiers.
+/// not support modifiers at all.
 ///
 /// # Safety
 ///
@@ -660,7 +660,6 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     };
 
     let mods = dev.device.modifiers(&class);
-
     c::mod_out(out_mods, mod_max, mods)
 }
 
@@ -798,7 +797,6 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
     let bo = c::bo(bo);
 
     let mts = bo.memory_types();
-
     c::mt_out(out_mts, mt_max, mts)
 }
 
@@ -817,6 +815,7 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i3
     let bo = c::bo_mut(bo);
     let mt = c::mt(mt);
     let dmabuf = c::fd_optional(dmabuf);
+
     let act = if dmabuf.is_some() {
         "import memory"
     } else {
@@ -931,20 +930,12 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
     let src = c::bo(src);
     let copy = c::buf_copy(copy);
     let in_sync_fd = c::fd_optional(in_sync_fd);
+
     let wait = out_sync_fd.is_null();
-
-    let Ok(sync_fd) = bo
-        .copy_buffer(src, copy, in_sync_fd, wait)
+    bo.copy_buffer(src, copy, in_sync_fd, wait)
         .log_err("copy buffer")
-    else {
-        return false;
-    };
-
-    if !wait {
-        c::fd_out(out_sync_fd, sync_fd);
-    }
-
-    true
+        .map(|sync_fd| c::fd_out(out_sync_fd, sync_fd))
+        .is_ok()
 }
 
 /// Performs a buffer-image copy from `src` to `bo`.
@@ -971,18 +962,10 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     let src = c::bo(src);
     let copy = c::img_copy(copy);
     let in_sync_fd = c::fd_optional(in_sync_fd);
+
     let wait = out_sync_fd.is_null();
-
-    let Ok(sync_fd) = bo
-        .copy_buffer_image(src, copy, in_sync_fd, wait)
+    bo.copy_buffer_image(src, copy, in_sync_fd, wait)
         .log_err("copy image")
-    else {
-        return false;
-    };
-
-    if !wait {
-        c::fd_out(out_sync_fd, sync_fd);
-    }
-
-    true
+        .map(|sync_fd| c::fd_out(out_sync_fd, sync_fd))
+        .is_ok()
 }
