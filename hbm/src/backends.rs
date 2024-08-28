@@ -383,6 +383,7 @@ impl Layout {
         Ok(layout)
     }
 
+    #[cfg(feature = "drm")]
     pub(crate) fn fit(&self, con: Option<Constraint>) -> bool {
         if con.is_none() {
             return true;

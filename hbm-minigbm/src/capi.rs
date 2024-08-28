@@ -69,7 +69,7 @@ pub struct hbm_device {
     _data: [u8; 0],
 }
 
-type ClassCache = HashMap<hbm_description, hbm::Class>;
+type ClassCache = HashMap<hbm_description, Arc<hbm::Class>>;
 
 struct CDevice {
     device: Arc<hbm::Device>,
@@ -87,20 +87,17 @@ impl CDevice {
         self.device.classify(desc, slice::from_ref(&usage))
     }
 
-    fn get_class<'a>(
-        &self,
-        desc: hbm_description,
-        class_cache: &'a mut ClassCache,
-    ) -> Result<&'a hbm::Class, hbm::Error> {
+    fn get_class<'a>(&self, desc: hbm_description) -> Result<Arc<hbm::Class>, hbm::Error> {
+        let mut class_cache = self.class_cache.lock().unwrap();
         let class = match class_cache.entry(desc) {
             Entry::Occupied(e) => e.into_mut(),
             Entry::Vacant(e) => {
                 let class = self.classify(e.key())?;
-                e.insert(class)
+                e.insert(Arc::new(class))
             }
         };
 
-        Ok(class)
+        Ok(class.clone())
     }
 }
 
@@ -658,12 +655,11 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     let dev = c::dev(dev);
     let desc = c::desc(desc);
 
-    let mut class_cache = dev.class_cache.lock().unwrap();
-    let Ok(class) = dev.get_class(desc, &mut class_cache) else {
+    let Ok(class) = dev.get_class(desc) else {
         return 0;
     };
 
-    let mods = dev.device.modifiers(class);
+    let mods = dev.device.modifiers(&class);
 
     c::mod_out(out_mods, mod_max, mods)
 }
@@ -682,12 +678,11 @@ pub unsafe extern "C" fn hbm_device_has_modifier(
     let dev = c::dev(dev);
     let desc = c::desc(desc);
 
-    let mut class_cache = dev.class_cache.lock().unwrap();
-    let Ok(class) = dev.get_class(desc, &mut class_cache) else {
+    let Ok(class) = dev.get_class(desc) else {
         return false;
     };
 
-    dev.device.modifiers(class).iter().any(|m| m.0 == modifier)
+    dev.device.modifiers(&class).iter().any(|m| m.0 == modifier)
 }
 
 /// Create a BO with a constraint.
@@ -709,16 +704,12 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
     let extent = c::extent(extent, desc.format);
     let con = c::con_optional(con);
 
-    let mut class_cache = dev.class_cache.lock().unwrap();
-    let Ok(class) = dev
-        .get_class(desc, &mut class_cache)
-        .log_err("get bo class")
-    else {
+    let Ok(class) = dev.get_class(desc).log_err("get bo class") else {
         return ptr::null_mut();
     };
 
     let Ok(bo) =
-        hbm::Bo::with_constraint(dev.device.clone(), class, extent, con).log_err("create bo")
+        hbm::Bo::with_constraint(dev.device.clone(), &class, extent, con).log_err("create bo")
     else {
         return ptr::null_mut();
     };
@@ -750,15 +741,11 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
     let layout = c::layout(layout);
     let dmabuf = c::fd_borrow(dmabuf);
 
-    let mut class_cache = dev.class_cache.lock().unwrap();
-    let Ok(class) = dev
-        .get_class(desc, &mut class_cache)
-        .log_err("get explicit bo class")
-    else {
+    let Ok(class) = dev.get_class(desc).log_err("get explicit bo class") else {
         return ptr::null_mut();
     };
 
-    let Ok(bo) = hbm::Bo::with_layout(dev.device.clone(), class, extent, layout, dmabuf)
+    let Ok(bo) = hbm::Bo::with_layout(dev.device.clone(), &class, extent, layout, dmabuf)
         .log_err("create explicit bo")
     else {
         return ptr::null_mut();
