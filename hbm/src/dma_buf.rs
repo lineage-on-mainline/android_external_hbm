@@ -34,27 +34,17 @@ impl Resource {
     }
 }
 
-impl From<Resource> for Handle {
-    fn from(res: Resource) -> Self {
-        Handle::new(HandlePayload::DmaBuf(res))
+fn get_resource(handle: &Handle) -> &Resource {
+    match handle.payload {
+        HandlePayload::DmaBuf(ref res) => res,
+        _ => unreachable!(),
     }
 }
 
-impl AsRef<Resource> for Handle {
-    fn as_ref(&self) -> &Resource {
-        match self.payload {
-            HandlePayload::DmaBuf(ref res) => res,
-            _ => unreachable!(),
-        }
-    }
-}
-
-impl AsMut<Resource> for Handle {
-    fn as_mut(&mut self) -> &mut Resource {
-        match self.payload {
-            HandlePayload::DmaBuf(ref mut res) => res,
-            _ => unreachable!(),
-        }
+fn get_resource_mut(handle: &mut Handle) -> &mut Resource {
+    match handle.payload {
+        HandlePayload::DmaBuf(ref mut res) => res,
+        _ => unreachable!(),
     }
 }
 
@@ -103,7 +93,7 @@ pub fn with_layout(
 }
 
 pub fn layout(handle: &Handle) -> Layout {
-    handle.as_ref().layout.clone()
+    get_resource(handle).layout.clone()
 }
 
 pub fn memory_types(_handle: &Handle) -> Vec<MemoryType> {
@@ -119,7 +109,7 @@ pub fn bind_memory<T>(
 where
     T: FnOnce(Size) -> Result<OwnedFd>,
 {
-    let res = handle.as_mut();
+    let res = get_resource_mut(handle);
 
     if !MemoryType::MAPPABLE.contains(mt) {
         return Error::user();
@@ -149,7 +139,7 @@ where
 }
 
 pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
-    let dmabuf = handle.as_ref().dmabuf();
+    let dmabuf = get_resource(handle).dmabuf();
 
     if let Some(name) = name {
         let _ = utils::dma_buf_set_name(dmabuf, name);
@@ -161,7 +151,7 @@ pub fn export_dma_buf(handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
 }
 
 pub fn map(handle: &Handle) -> Result<Mapping> {
-    let dmabuf = handle.as_ref().dmabuf();
+    let dmabuf = get_resource(handle).dmabuf();
 
     let len = utils::seek_end(dmabuf)?;
     let mapping = utils::mmap(dmabuf, len, Access::ReadWrite)?;
@@ -192,13 +182,13 @@ pub fn unmap(_handle: &Handle, mapping: Mapping) {
 // and abuse it for flush/invalidate.  These are not used in most setups anyway.
 
 pub fn flush(handle: &Handle) {
-    let dmabuf = handle.as_ref().dmabuf();
+    let dmabuf = get_resource(handle).dmabuf();
 
     let _ = utils::dma_buf_sync(dmabuf, Access::ReadWrite, false);
 }
 
 pub fn invalidate(handle: &Handle) {
-    let dmabuf = handle.as_ref().dmabuf();
+    let dmabuf = get_resource(handle).dmabuf();
 
     let _ = utils::dma_buf_sync(dmabuf, Access::ReadWrite, true);
 }

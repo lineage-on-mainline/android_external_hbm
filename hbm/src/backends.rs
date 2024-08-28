@@ -435,6 +435,12 @@ pub struct Handle {
     pub(crate) payload: HandlePayload,
 }
 
+impl From<dma_buf::Resource> for Handle {
+    fn from(res: dma_buf::Resource) -> Self {
+        Handle::new(HandlePayload::DmaBuf(res))
+    }
+}
+
 impl Handle {
     pub(crate) fn new(payload: HandlePayload) -> Self {
         Self { payload }
