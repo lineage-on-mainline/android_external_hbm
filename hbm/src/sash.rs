@@ -676,6 +676,7 @@ pub struct Device {
     handle: ash::Device,
     dispatch: DeviceDispatch,
 
+    // TODO add a wrapper for Device and move these to the wrapper
     queue: Mutex<vk::Queue>,
     command_buffer: PerThreadCommandBuffer,
 }

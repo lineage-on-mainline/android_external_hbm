@@ -29,7 +29,6 @@ than via cargo.
   - this is useful when sandboxed or for non-queryable constraints
 - require modifiers
 - `no_std`
-- docs
 - `hbm-gralloc`
   - aidl codegen
   - implement allocator and mapper
