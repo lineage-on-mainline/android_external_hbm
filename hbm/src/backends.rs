@@ -127,8 +127,8 @@ impl Class {
         self
     }
 
-    pub(crate) fn modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
-        self.modifiers = modifiers;
+    pub(crate) fn modifiers(mut self, mods: Vec<Modifier>) -> Self {
+        self.modifiers = mods;
         self
     }
 
@@ -280,8 +280,8 @@ impl Constraint {
         self
     }
 
-    pub fn modifiers(mut self, modifiers: Vec<Modifier>) -> Self {
-        self.modifiers = modifiers;
+    pub fn modifiers(mut self, mods: Vec<Modifier>) -> Self {
+        self.modifiers = mods;
         self
     }
 

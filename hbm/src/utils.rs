@@ -388,11 +388,11 @@ mod drm {
         // SAFETY: blob is large enough to hold the modifiers
         let mod_ptr = unsafe { blob.as_ptr().add(mod_offset) } as *const drm_format_modifier;
         // SAFETY: blob is large enough to hold the modifiers
-        let modifiers = unsafe { slice::from_raw_parts(mod_ptr, mod_count) };
+        let mods = unsafe { slice::from_raw_parts(mod_ptr, mod_count) };
 
         let iter = InFormatsIter {
             formats,
-            modifier_iter: modifiers.iter(),
+            modifier_iter: mods.iter(),
             modifier: Default::default(),
             offset: 0,
             mask: 0,

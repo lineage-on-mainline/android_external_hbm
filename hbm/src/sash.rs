@@ -976,7 +976,7 @@ impl Device {
             .ok_or(Error::Unsupported)?;
 
         // get supported modifiers
-        let mut modifiers: Vec<Modifier> = fmt_props
+        let mut mods: Vec<Modifier> = fmt_props
             .modifiers
             .iter()
             .filter_map(|mod_props| {
@@ -1002,18 +1002,18 @@ impl Device {
             })
             .collect();
 
-        if modifiers.is_empty() {
+        if mods.is_empty() {
             return Error::unsupported();
         }
 
         // without modifier support, pick optimal when both are supported
-        if !self.properties().ext_image_drm_format_modifier && modifiers.len() > 1 {
-            modifiers = vec![formats::MOD_INVALID];
+        if !self.properties().ext_image_drm_format_modifier && mods.len() > 1 {
+            mods = vec![formats::MOD_INVALID];
         }
 
         let props = ImageProperties {
             max_extent: self.properties().max_image_dimension_2d,
-            modifiers,
+            modifiers: mods,
         };
 
         Ok(props)
@@ -1972,19 +1972,18 @@ impl Image {
         img_info: ImageInfo,
         width: u32,
         height: u32,
-        modifiers: &[Modifier],
+        mods: &[Modifier],
         con: Option<Constraint>,
     ) -> Result<Self> {
-        let mut modifiers = modifiers;
+        let mut mods = mods;
         if let Some(con) = &con {
             if !con.modifiers.is_empty() {
-                modifiers = &con.modifiers;
+                mods = &con.modifiers;
             }
         }
 
-        let tiling = dev.get_image_tiling(modifiers[0]);
-        let handle =
-            Self::create_implicit_image(&dev, tiling, &img_info, width, height, modifiers)?;
+        let tiling = dev.get_image_tiling(mods[0]);
+        let handle = Self::create_implicit_image(&dev, tiling, &img_info, width, height, mods)?;
         let mut img = Self::new(dev, handle, tiling, img_info.format, img_info.external)?;
 
         if let Some(con) = con {
@@ -2041,12 +2040,12 @@ impl Image {
         img_info: &ImageInfo,
         width: u32,
         height: u32,
-        modifiers: &[Modifier],
+        mods: &[Modifier],
     ) -> Result<vk::Image> {
         // make Modifier #[repr(transparent)]?
-        let modifiers: Vec<u64> = modifiers.iter().map(|m| m.0).collect();
+        let mods: Vec<u64> = mods.iter().map(|m| m.0).collect();
         let mod_info =
-            vk::ImageDrmFormatModifierListCreateInfoEXT::default().drm_format_modifiers(&modifiers);
+            vk::ImageDrmFormatModifierListCreateInfoEXT::default().drm_format_modifiers(&mods);
 
         Self::create_image(dev, tiling, img_info, width, height, mod_info)
     }
