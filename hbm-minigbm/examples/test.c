@@ -22,11 +22,11 @@ die(const char *msg)
 static void
 test_memory_types(struct hbm_bo *bo)
 {
-    uint32_t mt_count = hbm_bo_memory_types(bo, 0, 0, 0, NULL);
+    uint32_t mt_count = hbm_bo_memory_types(bo, 0, NULL);
     uint32_t *mt_flags = malloc(sizeof(*mt_flags) * mt_count);
     if (!mt_flags)
         die("failed to alloc mt flags");
-    mt_count = hbm_bo_memory_types(bo, 0, 0, mt_count, mt_flags);
+    mt_count = hbm_bo_memory_types(bo, mt_count, mt_flags);
 
     bool has_mappable = false;
     for (uint32_t i = 0; i < mt_count; i++) {

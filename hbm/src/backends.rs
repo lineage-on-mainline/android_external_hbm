@@ -517,13 +517,8 @@ pub trait Backend: Send + Sync {
         dma_buf::layout(handle)
     }
 
-    fn memory_types(
-        &self,
-        handle: &Handle,
-        required_mt: MemoryType,
-        denied_mt: MemoryType,
-    ) -> Vec<MemoryType> {
-        dma_buf::memory_types(handle, required_mt, denied_mt)
+    fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
+        dma_buf::memory_types(handle)
     }
 
     fn bind_memory(

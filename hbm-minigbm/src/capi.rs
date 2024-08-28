@@ -796,16 +796,12 @@ pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_lay
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_memory_types(
     bo: *mut hbm_bo,
-    required_mt: u32,
-    denied_mt: u32,
     mt_max: u32,
     out_mts: *mut u32,
 ) -> u32 {
     let bo = c::bo(bo);
-    let required_mt = c::mt(required_mt);
-    let denied_mt = c::mt(denied_mt);
 
-    let mts = bo.memory_types(required_mt, denied_mt);
+    let mts = bo.memory_types();
     c::mt_out(out_mts, mt_max, mts)
 }
 
