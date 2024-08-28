@@ -61,6 +61,9 @@ impl Device {
             // this is unused and needs more work
             self.multi_classify(desc, usage)
         }
+        .inspect(|class| {
+            assert_eq!(class.modifiers.is_empty(), desc.is_buffer());
+        })
     }
 
     fn multi_classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
@@ -126,18 +129,16 @@ impl Device {
     }
 
     /// Returns the supported modifiers of a BO class.
-    pub fn modifiers<'a>(&self, class: &'a Class) -> &'a Vec<Modifier> {
-        static EMPTY: Vec<Modifier> = Vec::new();
-
-        // MOD_INVALID indicates an implicit modifier internally, but it means there is no modifier
-        // support to users
-        //
-        // TODO move this to hbm-minigbm?
-        if class.modifiers.iter().any(|m| m.is_invalid()) {
-            &EMPTY
-        } else {
-            &class.modifiers
-        }
+    ///
+    /// If the BO class is for a buffer, there is no modifier and the returned slice is empty.
+    /// Otherwise, the returned slice is non-empty.
+    ///
+    /// If HBM supports modifiers, `DRM_FORMAT_MOD_INVALID` is never returned.
+    ///
+    /// If HBM does not support modifiers, only `DRM_FORMAT_MOD_INVALID` and/or
+    /// `DRM_FORMAT_MOD_LINEAR` are returned.
+    pub fn modifiers<'a>(&self, class: &'a Class) -> &'a [Modifier] {
+        &class.modifiers
     }
 
     pub(crate) fn backend(&self, idx: usize) -> &dyn Backend {

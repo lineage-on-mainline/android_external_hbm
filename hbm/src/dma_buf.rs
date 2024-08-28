@@ -62,10 +62,12 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
         return Error::unsupported();
     }
 
-    let class = Class::new(desc)
+    let mut class = Class::new(desc)
         .usage(usage)
-        .max_extent(Extent::max(desc.is_buffer()))
-        .modifiers(vec![desc.modifier]);
+        .max_extent(Extent::max(desc.is_buffer()));
+    if desc.is_buffer() {
+        class = class.modifiers(vec![desc.modifier]);
+    }
 
     Ok(class)
 }

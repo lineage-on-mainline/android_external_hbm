@@ -643,11 +643,11 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
 
 /// Queries supported modifiers for a BO description.
 ///
+/// If the BO description is not supported or refers to a buffer, there is no supported modifier
+/// and 0 is always returned.
+///
 /// If `mod_max` is 0, the number of supported modifiers is returned.  Otherwise, the number of
 /// supported modifiers written to `out_mods` is returned.
-///
-/// There is no supported modifier if the BO description is not supported, or if the device does
-/// not support modifiers at all.
 ///
 /// # Safety
 ///
