@@ -98,7 +98,7 @@ pub struct Class {
 }
 
 impl Class {
-    pub(crate) fn new(desc: &Description) -> Self {
+    pub(crate) fn new(desc: Description) -> Self {
         Self {
             flags: desc.flags,
             format: desc.format,
@@ -580,7 +580,7 @@ mod tests {
     #[test]
     fn test_class() {
         let buf_desc = Description::new();
-        let buf_class = Class::new(&buf_desc).max_extent(Extent::Buffer(10));
+        let buf_class = Class::new(buf_desc).max_extent(Extent::Buffer(10));
 
         assert!(!buf_class.validate(Extent::Buffer(0)));
         assert!(buf_class.validate(Extent::Buffer(1)));
@@ -590,7 +590,7 @@ mod tests {
         assert!(!buf_class.validate(Extent::Buffer(11)));
 
         let img_desc = Description::new().format(formats::R8);
-        let img_class = Class::new(&img_desc).max_extent(Extent::Image(5, 10));
+        let img_class = Class::new(img_desc).max_extent(Extent::Image(5, 10));
 
         assert!(!img_class.validate(Extent::Image(0, 0)));
         assert!(!img_class.validate(Extent::Image(5, 0)));
@@ -680,7 +680,7 @@ mod tests {
     fn test_layout() {
         let size = 10;
         let buf_desc = Description::new();
-        let buf_class = Class::new(&buf_desc).max_extent(Extent::Buffer(size));
+        let buf_class = Class::new(buf_desc).max_extent(Extent::Buffer(size));
         let mut buf_layout = Layout::new().size(size);
         assert_eq!(
             Layout::packed(&buf_class, Extent::Buffer(size), None).unwrap(),
@@ -700,7 +700,7 @@ mod tests {
         let img_desc = Description::new()
             .format(formats::R8)
             .modifier(formats::MOD_LINEAR);
-        let img_class = Class::new(&img_desc)
+        let img_class = Class::new(img_desc)
             .max_extent(Extent::Image(width, height))
             .modifiers(vec![formats::MOD_LINEAR]);
         let mut img_layout = Layout::new()

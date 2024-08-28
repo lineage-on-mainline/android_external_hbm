@@ -236,7 +236,7 @@ impl super::Backend for Backend {
 
         let drm_usage = get_drm_usage(usage)?;
         let mods = self.get_supported_modifiers(drm_usage, desc.format, desc.modifier)?;
-        let class = Class::new(&desc)
+        let class = Class::new(desc)
             .usage(usage)
             .max_extent(Extent::Image(self.max_width, self.max_height))
             .modifiers(mods);
