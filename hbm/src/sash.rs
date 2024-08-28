@@ -2001,7 +2001,7 @@ impl Image {
     ) -> Result<Self> {
         let tiling = dev.get_image_tiling(layout.modifier);
         let handle = if tiling == vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT {
-            Self::create_explicit_image(&dev, tiling, &img_info, width, height, layout)?
+            Self::create_explicit_image(&dev, tiling, &img_info, width, height, &layout)?
         } else {
             // ignore layout and hope for the best
             Self::create_implicit_image(
@@ -2050,7 +2050,7 @@ impl Image {
         img_info: &ImageInfo,
         width: u32,
         height: u32,
-        layout: Layout,
+        layout: &Layout,
     ) -> Result<vk::Image> {
         let count = layout.plane_count as usize;
         let mut plane_layouts = Vec::with_capacity(count);

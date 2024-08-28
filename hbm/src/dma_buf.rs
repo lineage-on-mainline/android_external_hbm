@@ -103,7 +103,7 @@ pub fn with_layout(
 }
 
 pub fn layout(handle: &Handle) -> Layout {
-    handle.as_ref().layout
+    handle.as_ref().layout.clone()
 }
 
 pub fn memory_types(_handle: &Handle) -> Vec<MemoryType> {

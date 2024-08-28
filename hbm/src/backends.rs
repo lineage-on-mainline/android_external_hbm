@@ -310,7 +310,7 @@ impl Constraint {
     }
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Layout {
     pub size: Size,
