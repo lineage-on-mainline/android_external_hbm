@@ -154,14 +154,11 @@ fn mt_flags_from_mt(mt: MemoryType) -> vk::MemoryPropertyFlags {
     mt_flags
 }
 
-fn best_mt_index(mts: Vec<(u32, vk::MemoryPropertyFlags)>, mt: MemoryType) -> Result<u32> {
-    let required_flags = mt_flags_from_mt(mt);
-    let mut mt_iter = mts
-        .into_iter()
-        .filter(|(_, mt_flags)| mt_flags.contains(required_flags));
-
-    let first_mt = mt_iter.next();
-    if first_mt.is_none() {
+fn best_mt_index(
+    mts: Vec<(u32, vk::MemoryPropertyFlags)>,
+    required_flags: vk::MemoryPropertyFlags,
+) -> Result<u32> {
+    if mts.is_empty() {
         return Error::user();
     }
 
@@ -169,9 +166,17 @@ fn best_mt_index(mts: Vec<(u32, vk::MemoryPropertyFlags)>, mt: MemoryType) -> Re
         | vk::MemoryPropertyFlags::HOST_VISIBLE
         | vk::MemoryPropertyFlags::HOST_COHERENT
         | vk::MemoryPropertyFlags::HOST_CACHED;
-    let best_mt = mt_iter.find(|(_, mt_flags)| (*mt_flags & known_mt_flags) == required_flags);
-
-    let mt_idx = best_mt.or(first_mt).unwrap().0;
+    // exact match or first
+    let mt_idx = mts
+        .iter()
+        .find_map(|(mt_idx, mt_flags)| {
+            if (*mt_flags & known_mt_flags) == required_flags {
+                Some(*mt_idx)
+            } else {
+                None
+            }
+        })
+        .unwrap_or(mts[0].0);
 
     Ok(mt_idx)
 }
@@ -317,9 +322,11 @@ impl super::Backend for Backend {
     }
 
     fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
+        let required_flags = vk::MemoryPropertyFlags::empty();
+        let denied_flags = vk::MemoryPropertyFlags::empty();
         let mts = match handle.payload {
-            HandlePayload::Buffer(ref buf) => buf.memory_types(),
-            HandlePayload::Image(ref img) => img.memory_types(),
+            HandlePayload::Buffer(ref buf) => buf.memory_types(required_flags, denied_flags),
+            HandlePayload::Image(ref img) => img.memory_types(required_flags, denied_flags),
             _ => unreachable!(),
         };
 
@@ -334,15 +341,17 @@ impl super::Backend for Backend {
         mt: MemoryType,
         dmabuf: Option<OwnedFd>,
     ) -> Result<()> {
+        let required_flags = mt_flags_from_mt(mt);
+        let denied_flags = vk::MemoryPropertyFlags::empty();
         match handle.payload {
             HandlePayload::Buffer(ref mut buf) => {
-                let mts = buf.memory_types();
-                let mt_idx = best_mt_index(mts, mt)?;
+                let mts = buf.memory_types(required_flags, denied_flags);
+                let mt_idx = best_mt_index(mts, required_flags)?;
                 buf.bind_memory(mt_idx, dmabuf)
             }
             HandlePayload::Image(ref mut img) => {
-                let mts = img.memory_types();
-                let mt_idx = best_mt_index(mts, mt)?;
+                let mts = img.memory_types(required_flags, denied_flags);
+                let mt_idx = best_mt_index(mts, required_flags)?;
                 img.bind_memory(mt_idx, dmabuf)
             }
             _ => Error::unsupported(),
