@@ -139,8 +139,9 @@ impl Bo {
         self.backend().layout(&self.handle)
     }
 
-    pub fn memory_types(&self) -> Vec<MemoryType> {
-        self.backend().memory_types(&self.handle)
+    pub fn memory_types(&self, required_mt: MemoryType, denied_mt: MemoryType) -> Vec<MemoryType> {
+        self.backend()
+            .memory_types(&self.handle, required_mt, denied_mt)
     }
 
     pub fn bind_memory(&mut self, mt: MemoryType, dmabuf: Option<OwnedFd>) -> Result<()> {

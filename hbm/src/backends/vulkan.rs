@@ -321,9 +321,14 @@ impl super::Backend for Backend {
         }
     }
 
-    fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
-        let required_flags = vk::MemoryPropertyFlags::empty();
-        let denied_flags = vk::MemoryPropertyFlags::empty();
+    fn memory_types(
+        &self,
+        handle: &Handle,
+        required_mt: MemoryType,
+        denied_mt: MemoryType,
+    ) -> Vec<MemoryType> {
+        let required_flags = mt_flags_from_mt(required_mt);
+        let denied_flags = mt_flags_from_mt(denied_mt);
         let mts = match handle.payload {
             HandlePayload::Buffer(ref buf) => buf.memory_types(required_flags, denied_flags),
             HandlePayload::Image(ref img) => img.memory_types(required_flags, denied_flags),

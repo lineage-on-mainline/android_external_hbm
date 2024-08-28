@@ -96,8 +96,17 @@ pub fn layout(handle: &Handle) -> Layout {
     get_resource(handle).layout.clone()
 }
 
-pub fn memory_types(_handle: &Handle) -> Vec<MemoryType> {
-    vec![MemoryType::MAPPABLE]
+pub fn memory_types(
+    _handle: &Handle,
+    required_mt: MemoryType,
+    denied_mt: MemoryType,
+) -> Vec<MemoryType> {
+    let mt = MemoryType::MAPPABLE;
+    if mt.contains(required_mt) && !mt.intersects(denied_mt) {
+        vec![mt]
+    } else {
+        Vec::new()
+    }
 }
 
 pub fn bind_memory<T>(
