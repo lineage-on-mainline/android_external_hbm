@@ -13,6 +13,8 @@ pub enum Error {
     User,
     #[error("unsupported")]
     Unsupported,
+    #[error("device error")]
+    Device,
     #[error("{0}")]
     Io(#[from] io::Error),
     #[error("error code {0}")]
@@ -34,6 +36,10 @@ impl Error {
 
     pub(crate) fn unsupported<T>() -> Result<T> {
         Err(Error::Unsupported)
+    }
+
+    pub(crate) fn device<T>() -> Result<T> {
+        Err(Error::Device)
     }
 
     pub(crate) fn errno<T>(err: nix::Error) -> Result<T> {

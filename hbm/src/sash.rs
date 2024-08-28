@@ -1535,7 +1535,7 @@ impl PerThreadCommandBuffer {
                 if usable {
                     (handle, fence)
                 } else {
-                    return Error::unsupported();
+                    return Error::device();
                 }
             }
             None => self.create(dev)?,
