@@ -1,28 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+use super::log::LogError;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, Mutex};
-use std::{ffi, fmt, ptr, slice};
-
-trait LogError {
-    fn log_err<D>(self, act: D) -> Self
-    where
-        D: fmt::Display;
-}
-
-impl<T> LogError for Result<T, hbm::Error> {
-    fn log_err<D>(self, act: D) -> Self
-    where
-        D: fmt::Display,
-    {
-        if let Err(err) = &self {
-            log::error!("failed to {act}: {err}");
-        }
-
-        self
-    }
-}
+use std::{ffi, ptr, slice};
 
 /// Log level of a message or the message filter.
 #[repr(C)]

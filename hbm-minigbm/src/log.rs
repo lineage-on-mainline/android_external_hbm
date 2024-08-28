@@ -4,7 +4,7 @@
 use log::{LevelFilter, Log, Metadata, Record};
 use std::io::Write;
 use std::sync::{Mutex, Once};
-use std::{env, fs};
+use std::{env, fmt, fs};
 
 type LoggerCallback = Box<dyn Fn(&Record) + Send>;
 
@@ -83,4 +83,23 @@ pub fn disable() {
     init_once();
     log::set_max_level(log::LevelFilter::Off);
     LOGGER.update_callback(Logger::nop_callback());
+}
+
+pub trait LogError {
+    fn log_err<D>(self, act: D) -> Self
+    where
+        D: fmt::Display;
+}
+
+impl<T> LogError for Result<T, hbm::Error> {
+    fn log_err<D>(self, act: D) -> Self
+    where
+        D: fmt::Display,
+    {
+        if let Err(err) = &self {
+            log::error!("failed to {act}: {err}");
+        }
+
+        self
+    }
 }
