@@ -21,10 +21,8 @@ than via cargo.
 `hbm`
 
   - quirk device and quirks
-  - error reporting
   - require modifiers
   - `no_std`
-  - cleanups
   - docs
 
 `hbm-gralloc`
