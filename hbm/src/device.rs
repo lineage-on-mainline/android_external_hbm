@@ -26,6 +26,8 @@ impl Device {
     /// When the modifier is `DRM_FORMAT_MOD_LINEAR`, the memory plane count is equal to the format
     /// plane count.  Otherwise, the memory plane count is equal to or greater than the format
     /// plane count.
+    ///
+    /// TODO do we need this?
     pub fn memory_plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
         if fmt.is_invalid() || modifier.is_invalid() {
             return Error::user();

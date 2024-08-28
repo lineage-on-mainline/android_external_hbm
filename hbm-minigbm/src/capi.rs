@@ -625,6 +625,8 @@ pub unsafe extern "C" fn hbm_device_destroy(dev: *mut hbm_device) {
 /// Queries the memory plane count for the speicifed format modifier.  Returns 0 if the format or
 /// the modifier is not supported.
 ///
+/// TODO do we need this?
+///
 /// # Safety
 ///
 /// `dev` must be valid.
