@@ -23,8 +23,8 @@ bitflags::bitflags! {
     /// A DRM KMS backend usage.
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
     pub struct Usage: u32 {
-        /// The BO can be used with an overlay plane.
-        const OVERLAY = 1 << 0;
+        /// The BO can be used with a primary plane.
+        const PRIMARY = 1 << 0;
         /// The BO can be used with a cursor plane.
         const CURSOR = 1 << 1;
     }
@@ -81,7 +81,7 @@ pub struct Backend {
 
     max_width: u32,
     max_height: u32,
-    overlay_formats: FormatTable,
+    primary_formats: FormatTable,
     cursor_formats: FormatTable,
 }
 
@@ -92,7 +92,7 @@ impl Backend {
             alloc_only,
             max_width: 0,
             max_height: 0,
-            overlay_formats: HashMap::new(),
+            primary_formats: HashMap::new(),
             cursor_formats: HashMap::new(),
         };
 
@@ -170,17 +170,30 @@ impl Backend {
         }
 
         if let Some(ty) = ty {
+            let ty = if ty == drm::control::PlaneType::Primary as u64 {
+                drm::control::PlaneType::Primary
+            } else if ty == drm::control::PlaneType::Cursor as u64 {
+                drm::control::PlaneType::Cursor
+            } else {
+                drm::control::PlaneType::Overlay
+            };
+
             self.init_plane_formats(info, ty, in_fmts);
         }
 
         Ok(())
     }
 
-    fn init_plane_formats(&mut self, info: plane::Info, ty: u64, in_fmts: Option<Vec<u8>>) {
-        let fmts = if ty == drm::control::PlaneType::Cursor as u64 {
-            &mut self.cursor_formats
-        } else {
-            &mut self.overlay_formats
+    fn init_plane_formats(
+        &mut self,
+        info: plane::Info,
+        ty: drm::control::PlaneType,
+        in_fmts: Option<Vec<u8>>,
+    ) {
+        let fmts = match ty {
+            drm::control::PlaneType::Primary => &mut self.primary_formats,
+            drm::control::PlaneType::Cursor => &mut self.cursor_formats,
+            _ => return,
         };
 
         if let Some(in_fmts) = in_fmts {
@@ -214,7 +227,7 @@ impl Backend {
         let fmts = if usage.contains(Usage::CURSOR) {
             &self.cursor_formats
         } else {
-            &self.overlay_formats
+            &self.primary_formats
         };
 
         let mods = fmts.get(&fmt).ok_or(Error::Unsupported)?;

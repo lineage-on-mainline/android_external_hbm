@@ -16,7 +16,7 @@ fn main() {
         .flags(Flags::EXTERNAL | Flags::MAP)
         .format(Format(DrmFourcc::Xrgb8888 as u32))
         .modifier(DrmModifier::Linear.into());
-    let bo_usage = Usage::DrmKms(hbm::drm_kms::Usage::OVERLAY);
+    let bo_usage = Usage::DrmKms(hbm::drm_kms::Usage::PRIMARY);
     let bo_class = dev.classify(bo_desc, slice::from_ref(&bo_usage)).unwrap();
 
     let bo_width = 63;

@@ -21,7 +21,7 @@ fn main() {
         .flags(Flags::EXTERNAL)
         .format(Format(DrmFourcc::Xrgb8888 as u32));
     let bo_usage = [
-        Usage::DrmKms(hbm::drm_kms::Usage::OVERLAY),
+        Usage::DrmKms(hbm::drm_kms::Usage::PRIMARY),
         Usage::Vulkan(hbm::vulkan::Usage::COLOR),
     ];
     let bo_class = dev.classify(bo_desc, &bo_usage).unwrap();
