@@ -1042,17 +1042,13 @@ impl Device {
         &self,
         mt_mask: u32,
         required_flags: vk::MemoryPropertyFlags,
-        denied_flags: vk::MemoryPropertyFlags,
     ) -> Vec<(u32, vk::MemoryPropertyFlags)> {
         self.properties()
             .memory_types
             .iter()
             .enumerate()
             .filter_map(|(mt_idx, mt_flags)| {
-                if (mt_mask & (1 << mt_idx)) != 0
-                    && mt_flags.contains(required_flags)
-                    && !mt_flags.intersects(denied_flags)
-                {
+                if (mt_mask & (1 << mt_idx)) != 0 && mt_flags.contains(required_flags) {
                     Some((mt_idx as u32, *mt_flags))
                 } else {
                     None
@@ -1880,10 +1876,8 @@ impl Buffer {
     pub fn memory_types(
         &self,
         required_flags: vk::MemoryPropertyFlags,
-        denied_flags: vk::MemoryPropertyFlags,
     ) -> Vec<(u32, vk::MemoryPropertyFlags)> {
-        self.device
-            .memory_types(self.mt_mask, required_flags, denied_flags)
+        self.device.memory_types(self.mt_mask, required_flags)
     }
 
     pub fn bind_memory(&mut self, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<()> {
@@ -2178,10 +2172,8 @@ impl Image {
     pub fn memory_types(
         &self,
         required_flags: vk::MemoryPropertyFlags,
-        denied_flags: vk::MemoryPropertyFlags,
     ) -> Vec<(u32, vk::MemoryPropertyFlags)> {
-        self.device
-            .memory_types(self.mt_mask, required_flags, denied_flags)
+        self.device.memory_types(self.mt_mask, required_flags)
     }
 
     pub fn bind_memory(&mut self, mt_idx: u32, dmabuf: Option<OwnedFd>) -> Result<()> {
