@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! BO-related types.
+//!
+//! This module defines `Bo`.
+
 use super::backends::{
     Backend, Class, Constraint, CopyBuffer, CopyBufferImage, Extent, Flags, Handle, Layout,
     MemoryType,
@@ -20,6 +24,9 @@ struct BoState {
     map_count: u32,
 }
 
+/// A buffer object (BO).
+///
+/// A BO is an abstraction of a hardware buffer object.
 pub struct Bo {
     device: Arc<Device>,
     handle: Handle,
@@ -77,6 +84,7 @@ impl Bo {
         }
     }
 
+    /// Creates a BO with an optional constraint.
     pub fn with_constraint(
         device: Arc<Device>,
         class: &Class,
@@ -96,6 +104,9 @@ impl Bo {
         Ok(bo)
     }
 
+    /// Creates a BO with an explicit physical layout.
+    ///
+    /// When importing, `dmabuf` can be specified to further restrict the supported memory types.
     pub fn with_layout(
         device: Arc<Device>,
         class: &Class,
@@ -134,14 +145,31 @@ impl Bo {
         self.device.backend(self.backend_index)
     }
 
+    /// Returns the physical layout.
     pub fn layout(&self) -> Layout {
         self.backend().layout(&self.handle)
     }
 
+    /// Returns the supported memory types.
+    ///
+    /// When not importing, the supported memory types can be pre-determined to some degree.  If
+    /// two BOs have the same `format`, `modifier`, `flags`, and `usage`, they have the same
+    /// supported memory types.
+    ///
+    /// If two BOs have the same `format` and `modifier`, and if the first BO's `flags` and `usage`
+    /// is a subset of the second's, then the first BO's supported memory types is a superset of
+    /// the second's.
+    ///
+    /// When importing, the supported memory types are further restricted by the imported dma-bufs.
     pub fn memory_types(&self) -> Vec<MemoryType> {
         self.backend().memory_types(&self.handle)
     }
 
+    /// Allocates or imports a memory, and binds the memory to a BO.
+    ///
+    /// A BO without a memory bound cannot be exported, mapped, nor copied.
+    ///
+    /// As a note, two HBM BOs can refer to the same kernel space BO due to export/import.
     pub fn bind_memory(&mut self, mt: MemoryType, dmabuf: Option<OwnedFd>) -> Result<()> {
         if dmabuf.is_some() && !self.can_external() {
             return Error::user();
@@ -161,6 +189,12 @@ impl Bo {
         Ok(())
     }
 
+    /// Exports a BO as a dma-buf.
+    ///
+    /// A name can optionally be set for the dma-buf.
+    ///
+    /// As a note, two userspace dma-buf fds can refer to the same kernel space dma-buf object.
+    /// The name is attached to the kernel space dma-buf object, not the userspace dma-buf fds.
     pub fn export_dma_buf(&self, name: Option<&str>) -> Result<OwnedFd> {
         if !self.can_external() {
             return Error::user();
@@ -174,6 +208,9 @@ impl Bo {
         self.backend().export_dma_buf(&self.handle, name)
     }
 
+    /// Maps a BO for CPU access.
+    ///
+    /// Recursive mapping is allowed and returns the same mapping.
     pub fn map(&mut self) -> Result<Mapping> {
         if !self.can_map() {
             return Error::user();
@@ -195,6 +232,7 @@ impl Bo {
         Ok(state.mapping.unwrap())
     }
 
+    /// Unmaps a BO.
     pub fn unmap(&mut self) {
         let mut state = self.state.lock().unwrap();
 
@@ -209,6 +247,9 @@ impl Bo {
         }
     }
 
+    /// Flushes the CPU cache for the BO mapping.
+    ///
+    /// If the memory type is coherent, the CPU cache is not flushed.
     pub fn flush(&self) {
         let state = self.state.lock().unwrap();
 
@@ -217,6 +258,9 @@ impl Bo {
         }
     }
 
+    /// Invalidates the CPU cache for the BO mapping.
+    ///
+    /// If the memory type is coherent, the CPU cache is not invalidated.
     pub fn invalidate(&self) {
         let state = self.state.lock().unwrap();
 
@@ -309,6 +353,12 @@ impl Bo {
         }
     }
 
+    /// Copies between two BOs that are both buffers.
+    ///
+    /// `sync_fd` is an optional sync file that the copy operation waits for.
+    ///
+    /// If `wait` is true, this function never returns any sync file.  Otherwise, it may
+    /// return a sync file associated with the copy operation.
     pub fn copy_buffer(
         &self,
         src: &Bo,
@@ -325,6 +375,12 @@ impl Bo {
             .map(|sync_fd| self.wait_copy(sync_fd, wait))
     }
 
+    /// Copies between two BOs where one is a buffer and one is an image.
+    ///
+    /// `sync_fd` is an optional sync file that the copy operation waits for.
+    ///
+    /// If `wait` is true, this function never returns any sync file.  Otherwise, it may
+    /// return a sync file associated with the copy operation.
     pub fn copy_buffer_image(
         &self,
         src: &Bo,

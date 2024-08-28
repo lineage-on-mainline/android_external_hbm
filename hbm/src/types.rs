@@ -1,26 +1,39 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! Simple types.
+//!
+//! This module defines simple HBM-specific types.
+
 use super::formats;
 use std::{ffi, fmt, io, num, ptr, result};
 
+/// The error type for HBM operations.
 #[derive(thiserror::Error, Debug)]
 #[non_exhaustive]
 pub enum Error {
+    /// A generic error with a descriptive message to provide the context.
     #[error("{0}")]
     Context(&'static str),
+    /// A validation error indicating a bad user input.
     #[error("bad user input")]
     User,
+    /// Indicates an unsupported operation.
     #[error("unsupported")]
     Unsupported,
+    /// A runtime device error that may or may no be persistent.
     #[error("device error")]
     Device,
     #[error("{0}")]
+    /// A generic IO error.
     Io(#[from] io::Error),
     #[error("error code {0}")]
+    /// A backend-specific opaque error code.
     Code(i32),
+    /// A validation error indicating a bad integer.
     #[error("bad integer conversion")]
     IntegerConversion,
+    /// A validation error indicating a bad string.
     #[error("bad string conversion")]
     StringConversion,
 }
@@ -72,10 +85,13 @@ impl From<ash::vk::Result> for Error {
     }
 }
 
+/// A specialized `Result` type for HBM operations.
 pub(crate) type Result<T> = result::Result<T, Error>;
 
+/// The type for the BO size.
 pub type Size = u64;
 
+/// A 32-bit DRM format.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Format(pub u32);
 
@@ -110,6 +126,7 @@ impl fmt::Display for Format {
     }
 }
 
+/// A 64-bit DRM format modifier.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct Modifier(pub u64);
 
@@ -138,6 +155,7 @@ where
     }
 }
 
+/// An access type for memory mapping.
 pub(crate) enum Access {
     Read,
     #[allow(dead_code)]
@@ -145,9 +163,12 @@ pub(crate) enum Access {
     ReadWrite,
 }
 
+/// A memory mapping.
 #[derive(Clone, Copy)]
 pub struct Mapping {
+    /// Pointer of a mapping.
     pub ptr: ptr::NonNull<ffi::c_void>,
+    /// Size of a mapping.
     pub len: num::NonZeroUsize,
 }
 

@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! A backend for Vulkan.
+//!
+//! This module provides a backend for Vulkan.
+
 use super::{
     Class, Constraint, CopyBuffer, CopyBufferImage, Description, Extent, Flags, Handle,
     HandlePayload, Layout, MemoryType,
@@ -15,14 +19,22 @@ use std::sync::Arc;
 use std::{num, ptr};
 
 bitflags::bitflags! {
+    /// A Vulkan backend usage.
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
     pub struct Usage: u32 {
+        /// The BO can be used for transfers.
         const TRANSFER = 1 << 0;
+        /// The BO can be used as a uniform buffer.
         const UNIFORM = 1 << 1;
+        /// The BO can be used as a storage buffer or a storage image.
         const STORAGE = 1 << 2;
+        /// The BO can be used as a sampled image.
         const SAMPLED = 1 << 3;
+        /// The BO can be used as a color attachment.
         const COLOR = 1 << 4;
-        // TODO remove this in favor of modifiers and constraints
+        /// The BO can be used as a scanout.
+        ///
+        /// This is a hack until we can require `VK_EXT_image_drm_format_modifier`.
         const SCANOUT_HACK = 1 << 5;
     }
 }
@@ -203,6 +215,7 @@ fn get_image(handle: &Handle) -> &sash::Image {
     }
 }
 
+/// A Vulkan backend.
 pub struct Backend {
     device: Arc<sash::Device>,
 }
@@ -433,6 +446,7 @@ impl super::Backend for Backend {
     }
 }
 
+/// A Vulkan backend builder.
 #[derive(Default)]
 pub struct Builder {
     device_index: Option<usize>,
@@ -441,26 +455,30 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Creates a Vulkan backend builder.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Sets the index of the physical device to use.
     pub fn device_index(mut self, device_index: usize) -> Self {
         self.device_index = Some(device_index);
         self
     }
 
-    // st_rdev
+    /// Sets the device id (`st_rdev`) of the physical device to use.
     pub fn device_id(mut self, device_id: u64) -> Self {
         self.device_id = Some(device_id);
         self
     }
 
+    /// Enables `VK_EXT_debug_utils` message logging.
     pub fn debug(mut self, debug: bool) -> Self {
         self.debug = debug;
         self
     }
 
+    /// Builds a Vulkan backend.
     pub fn build(mut self) -> Result<Backend> {
         match self.device_index.is_some() as i32 + self.device_id.is_some() as i32 {
             0 => {

@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! Utilities for DRM formats and format modifiers.
+//!
+//! This module provides helpers to work with DRM formats and format modifiers.
+
 use super::backends::{Constraint, Layout};
 use super::types::{Error, Format, Modifier, Result, Size};
 #[cfg(feature = "ash")]

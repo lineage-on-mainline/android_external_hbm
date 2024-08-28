@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! A safe allocator using ash.
+//!
+//! This module provides a safe allocator using ash.
+
 use super::backends::{Constraint, CopyBuffer, CopyBufferImage, Layout};
 use super::formats;
 use super::types::{Error, Modifier, Result};

@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! Utilities for interacting with the OS.
+//!
+//! This module provides safe and convenient wrappers to interact with the OS.
+
 use super::types::{Access, Error, Mapping, Result, Size};
 use nix::{fcntl, poll, sys, unistd};
 use std::ffi::CString;

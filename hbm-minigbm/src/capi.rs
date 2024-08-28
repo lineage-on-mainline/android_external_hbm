@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! Unstable C API.
+//!
+//! Implements an unstable C API for minigbm drivers.
+
 use super::log::LogError;
 use std::collections::{hash_map::Entry, HashMap};
 use std::sync::{Arc, Mutex};
@@ -33,7 +37,7 @@ pub const HBM_FLAG_EXTERNAL: u32 = 1 << 0;
 pub const HBM_FLAG_MAP: u32 = 1 << 1;
 /// The BO can be copied to or copied from.
 pub const HBM_FLAG_COPY: u32 = 1 << 2;
-/// The BO must be allocated from a protected heap.
+/// The BO must be on a protected heap.
 pub const HBM_FLAG_PROTECTED: u32 = 1 << 3;
 /// The BO must not be compressed.
 pub const HBM_FLAG_NO_COMPRESSION: u32 = 1 << 4;
@@ -48,7 +52,7 @@ pub const HBM_USAGE_GPU_STORAGE: u64 = 1u64 << 2;
 pub const HBM_USAGE_GPU_SAMPLED: u64 = 1u64 << 3;
 /// The BO can be used as a GPU color image.
 pub const HBM_USAGE_GPU_COLOR: u64 = 1u64 << 4;
-/// The BO can be scanned out.
+/// The BO can be scanned out.  This is only meaningful when HBM lacks modifier support.
 pub const HBM_USAGE_GPU_SCANOUT_HACK: u64 = 1u64 << 5;
 
 /// The memory type is local to the device.

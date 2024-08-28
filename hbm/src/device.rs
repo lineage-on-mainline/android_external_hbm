@@ -1,16 +1,31 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! Device-related types.
+//!
+//! This module defines `Device` and `Builder`
+
 use super::backends::{Backend, Class, Constraint, Description, Extent, Usage};
 use super::types::{Error, Format, Modifier, Result};
 use std::collections::HashSet;
 use std::sync::Arc;
 
+/// A device.
+///
+/// A device consists of one or more backends to interact with the underlying subsystems and hardware.
 pub struct Device {
     backends: Vec<Box<dyn Backend>>,
 }
 
 impl Device {
+    /// Returns the memory plane count of a format and a modifier.
+    ///
+    /// The format plane count is a property of a format.  The memory plane count is a property of
+    /// both a format and a modifier.
+    ///
+    /// When the modifier is `DRM_FORMAT_MOD_LINEAR`, the memory plane count is equal to the format
+    /// plane count.  Otherwise, the memory plane count is equal to or greater than the format
+    /// plane count.
     pub fn memory_plane_count(&self, fmt: Format, modifier: Modifier) -> Result<u32> {
         if fmt.is_invalid() || modifier.is_invalid() {
             return Error::user();
@@ -26,6 +41,11 @@ impl Device {
         Error::unsupported()
     }
 
+    /// Creates the opaque BO class for a BO description and a BO usage.
+    ///
+    /// This validates the BO description and usage and returns the opaque BO class.  If the
+    /// possible combinations of BO description/usage are limited, it is suggested to cache the BO
+    /// classes to avoid repeated validations.
     pub fn classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
         if !desc.is_valid() {
             return Error::user();
@@ -105,11 +125,14 @@ impl Device {
         Ok(class)
     }
 
+    /// Returns the supported modifiers of a BO class.
     pub fn modifiers<'a>(&self, class: &'a Class) -> &'a Vec<Modifier> {
         static EMPTY: Vec<Modifier> = Vec::new();
 
         // MOD_INVALID indicates an implicit modifier internally, but it means there is no modifier
         // support to users
+        //
+        // TODO move this to hbm-minigbm?
         if class.modifiers.iter().any(|m| m.is_invalid()) {
             &EMPTY
         } else {
@@ -122,16 +145,21 @@ impl Device {
     }
 }
 
+/// A device builder.
+///
+/// The sole purpose of a builder is to build a `Device`.
 #[derive(Default)]
 pub struct Builder {
     backends: Vec<Box<dyn super::Backend>>,
 }
 
 impl Builder {
+    /// Creates a device builder.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Adds a backend to the device builder.
     pub fn add_backend<T>(mut self, backend: T) -> Self
     where
         T: Backend + 'static,
@@ -140,6 +168,7 @@ impl Builder {
         self
     }
 
+    /// Builds a `Device`.
     pub fn build(self) -> Result<Arc<Device>> {
         if self.backends.is_empty() {
             return Error::user();

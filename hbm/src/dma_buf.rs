@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! High-level helpers for dma-bufs.
+//!
+//! This module provides high-level helpers that backends can use to work with dma-bufs.
+
 use super::backends::{
     Class, Constraint, Description, Extent, Flags, Handle, HandlePayload, Layout, MemoryType, Usage,
 };
@@ -179,7 +183,8 @@ pub fn unmap(_handle: &Handle, mapping: Mapping) {
 //    - Access::Write flushes the cpu cache and makes sure cpu writes are available in the device
 //      domain
 //
-// and abuse it for flush/invalidate.  These are not used in most setups anyway.
+// and abuse it for flush/invalidate.  This is incorrect, but we don't really use
+// utils::dma_buf_sync yet anyway.
 
 pub fn flush(handle: &Handle) {
     let dmabuf = get_resource(handle).dmabuf();

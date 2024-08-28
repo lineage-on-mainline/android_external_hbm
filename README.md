@@ -9,7 +9,8 @@ hardware buffers.
 [minigbm](https://chromium.googlesource.com/chromiumos/platform/minigbm/)'s
 internal use.
 
-`hbm-gralloc` crate provides a HAL service for [Graphics
+`hbm-gralloc` crate will (it is currently empty) provide a HAL service for
+[Graphics
 Allocator](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/main/graphics/allocator/aidl/)
 interface and an SP-HAL for [Graphics
 Mapper](https://android.googlesource.com/platform/hardware/interfaces/+/refs/heads/main/graphics/mapper/stable-c)
@@ -18,21 +19,17 @@ than via cargo.
 
 ## TODOs
 
-`hbm`
-
-  - multi-backend
-    - e.g., drm-kms adds alignment and modifier constraints, vulkan decides
-      the layout, dma-heap allocates dma-buf, and vulkan again maps/copies
-  - more backends, such as vaapi, v4l2, libcamera, etc.
-  - policy backend
-    - collect constraints and generate a policy offline
-    - load constraints from the policy at runtime
-    - this is useful when sandboxed or for non-queryable constraints
-  - require modifiers
-  - `no_std`
-  - docs
-
-`hbm-gralloc`
-
+- multi-backend
+  - e.g., drm-kms adds alignment and modifier constraints, vulkan decides
+    the layout, dma-heap allocates dma-buf, and vulkan again maps/copies
+- more backends, such as vaapi, v4l2, libcamera, etc.
+- policy backend
+  - collect constraints and generate a policy offline
+  - load constraints from the policy at runtime
+  - this is useful when sandboxed or for non-queryable constraints
+- require modifiers
+- `no_std`
+- docs
+- `hbm-gralloc`
   - aidl codegen
-  - impl
+  - implement allocator and mapper

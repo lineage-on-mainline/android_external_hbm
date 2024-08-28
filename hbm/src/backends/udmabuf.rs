@@ -1,12 +1,17 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! A backend for udmabuf.
+//!
+//! This module provides a backend for udmabuf.
+
 use super::{Handle, MemoryType};
 use crate::dma_buf;
 use crate::types::{Error, Result};
 use crate::utils;
 use std::os::fd::OwnedFd;
 
+/// A udmabuf backend.
 pub struct Backend {
     fd: OwnedFd,
 }
@@ -26,14 +31,17 @@ impl super::Backend for Backend {
     }
 }
 
+/// A udmabuf backend builder.
 #[derive(Default)]
 pub struct Builder;
 
 impl Builder {
+    /// Creates a udmabuf backend builder.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Builds a udmabuf backend.
     pub fn build(self) -> Result<Backend> {
         if !utils::udmabuf_exists() {
             return Error::unsupported();

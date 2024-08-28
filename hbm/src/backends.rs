@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! Backend-related types.
+//!
+//! This module defines backend-related types and traits.
+
 pub mod dma_heap;
 #[cfg(feature = "drm")]
 pub mod drm_kms;
@@ -16,39 +20,62 @@ use super::types::{Error, Format, Mapping, Modifier, Result, Size};
 use std::os::fd::{BorrowedFd, OwnedFd};
 
 bitflags::bitflags! {
+    /// BO Flags.
+    ///
+    /// Comparing to the backend-specific `Usage`, flags are generic and apply to all backends.
     #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
     pub struct Flags: u32 {
+        /// The BO can be exported or imported.
         const EXTERNAL = 1 << 0;
+        /// The BO can be mapped.
         const MAP = 1 << 1;
+        /// The BO can be copied.
         const COPY = 1 << 2;
+        /// The BO is on a protected heap.
         const PROTECTED = 1 << 3;
+        /// The BO is not compressed.  This affects the supported modifiers.
         const NO_COMPRESSION = 1 << 4;
     }
 }
 
+/// A BO Description.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub struct Description {
+    /// Flags of a BO.
     pub flags: Flags,
+    /// Format of a BO.
+    ///
+    /// If the format is `DRM_FORMAT_INVALID`, the BO is a buffer.  Otherwise, the BO is an image.
     pub format: Format,
+    /// Modifier of a BO.
+    ///
+    /// If the BO is a buffer, the modifier must be `DRM_FORMAT_MOD_INVALID`.
+    ///
+    /// If the BO is an image, and if the modifier is `DRM_FORMAT_MOD_INVALID`, the device will
+    /// pick the optimal modifier.  Otherwise, the device will use the specified modifier.
     pub modifier: Modifier,
 }
 
 impl Description {
+    /// Creates a description.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Sets the flags.
     pub fn flags(mut self, flags: Flags) -> Self {
         self.flags = flags;
         self
     }
 
+    /// Sets the format.
     pub fn format(mut self, fmt: Format) -> Self {
         self.format = fmt;
         self
     }
 
+    /// Sets the modifier.
     pub fn modifier(mut self, modifier: Modifier) -> Self {
         self.modifier = modifier;
         self
@@ -73,23 +100,30 @@ impl Description {
     }
 }
 
+/// A BO usage.
+///
+/// Comparing to the generic `Flags`, a usage is specific to a backend.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[non_exhaustive]
 pub enum Usage {
+    /// The backend is not used.
     Unused,
+    /// `drm_kms` backend-specific.
     #[cfg(feature = "drm")]
     DrmKms(drm_kms::Usage),
+    /// `vulkan` backend-specific.
     #[cfg(feature = "ash")]
     Vulkan(vulkan::Usage),
 }
 
-// this is validated and must be opaque to users
+/// An opaque BO class.
+///
+/// A class is validated and is opaque to users.
 #[derive(Clone, Debug)]
 pub struct Class {
     // these are copied from user inputs
     pub(crate) flags: Flags,
     pub(crate) format: Format,
-
     pub(crate) usage: Usage,
 
     // These express backend limits.  When there are multiple backends, limits from all backends
@@ -168,10 +202,16 @@ impl Class {
     }
 }
 
+/// A BO extent.
+///
+/// An extent is 1-dimentional or 2-dimentional depending on whether the BO is a buffer or an
+/// image.
 #[derive(Clone, Copy, Debug)]
 #[non_exhaustive]
 pub enum Extent {
+    /// The size of the BO, when it is a buffer.
     Buffer(Size),
+    /// The width and height of the BO, when it is an image.
     Image(u32, u32),
 }
 
@@ -234,12 +274,16 @@ impl Extent {
     }
 }
 
+/// A BO constraint.
+///
+/// A constraint specifies additional requirements when creating a BO.
 #[derive(Clone, Debug)]
 pub struct Constraint {
     pub(crate) offset_align: Size,
     pub(crate) stride_align: Size,
     pub(crate) size_align: Size,
 
+    // no restriction when empty
     pub(crate) modifiers: Vec<Modifier>,
 }
 
@@ -255,10 +299,12 @@ impl Default for Constraint {
 }
 
 impl Constraint {
+    /// Create a constraint.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Sets the offset alignment.
     pub fn offset_align(mut self, align: Size) -> Self {
         if align > 1 {
             self.offset_align = align;
@@ -266,6 +312,7 @@ impl Constraint {
         self
     }
 
+    /// Sets the row stride alignment.
     pub fn stride_align(mut self, align: Size) -> Self {
         if align > 1 {
             self.stride_align = align;
@@ -273,6 +320,7 @@ impl Constraint {
         self
     }
 
+    /// Sets the plane size alignment.
     pub fn size_align(mut self, align: Size) -> Self {
         if align > 1 {
             self.size_align = align;
@@ -280,6 +328,7 @@ impl Constraint {
         self
     }
 
+    /// Sets the allowed modifiers.
     pub fn modifiers(mut self, mods: Vec<Modifier>) -> Self {
         self.modifiers = mods;
         self
@@ -316,51 +365,67 @@ impl Constraint {
     }
 }
 
+/// A BO physical layout.
+///
+/// A physical layout provides the necessary information for import and for CPU access.
 #[derive(Clone, Debug, Default, PartialEq)]
 #[non_exhaustive]
 pub struct Layout {
+    /// Size of a BO.
     pub size: Size,
+    /// Modifier of a BO.  If the BO is a buffer, the modifier is `DRM_FORMAT_MOD_INVALID`.
     pub modifier: Modifier,
+    /// Memory plane count of a BO.  If the BO is a buffer, the memory plane count is 0.
     pub plane_count: u32,
+    /// Offsets of memory planes, or 0.
     pub offsets: [Size; 4],
+    /// Row strides of memory planes, or 0.
     pub strides: [Size; 4],
 }
 
 impl Layout {
+    /// Creates a layout.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Sets the size.
     pub fn size(mut self, size: Size) -> Self {
         self.size = size;
         self
     }
 
+    /// Sets the modifier.
     pub fn modifier(mut self, modifier: Modifier) -> Self {
         self.modifier = modifier;
         self
     }
 
+    /// Sets the memory plane count.
     pub fn plane_count(mut self, plane_count: u32) -> Self {
         self.plane_count = plane_count;
         self
     }
 
+    /// Sets the memory plane offsets.
     pub fn offsets(mut self, offsets: [Size; 4]) -> Self {
         self.offsets = offsets;
         self
     }
 
+    /// Sets the memory plane row strides.
     pub fn strides(mut self, strides: [Size; 4]) -> Self {
         self.strides = strides;
         self
     }
 
+    /// Sets a memory plane offset.
     pub fn offset(mut self, plane: usize, offset: Size) -> Self {
         self.offsets[plane] = offset;
         self
     }
 
+    /// Sets a memory plane row stride.
     pub fn stride(mut self, plane: usize, stride: Size) -> Self {
         self.strides[plane] = stride;
         self
@@ -438,6 +503,9 @@ pub(crate) enum HandlePayload {
     Image(sash::Image),
 }
 
+/// An opaque BO handle.
+///
+/// A BO handle consists of a backend-specific payload.
 pub struct Handle {
     pub(crate) payload: HandlePayload,
 }
@@ -455,43 +523,72 @@ impl Handle {
 }
 
 bitflags::bitflags! {
+    /// A memory type.
+    ///
+    /// A memory type is a bitmask of memory properties.
     #[derive(Clone, Copy, Debug, Default)]
     pub struct MemoryType: u32 {
+        /// The memory is local to the device.
         const LOCAL = 1 << 0;
+        /// The memory is mappable.
         const MAPPABLE = 1 << 1;
+        /// The memory mapping is coherent.
         const COHERENT = 1 << 2;
+        /// The memory mapping is cached.
         const CACHED = 1 << 3;
     }
 }
 
+/// A buffer-buffer copy.
+///
+/// This struct describes a copy between two buffers.
 #[derive(Clone, Copy, Debug)]
 pub struct CopyBuffer {
+    /// Starting offset of the src in bytes.
     pub src_offset: Size,
+    /// Starting offset of the dst in bytes.
     pub dst_offset: Size,
+    /// Size to copy in bytes.
     pub size: Size,
 }
 
+/// A buffer-image copy.
+///
+/// This struct describes a copy between a buffer and an image.
 #[derive(Clone, Copy, Debug)]
 pub struct CopyBufferImage {
+    /// Starting offset of the buffer in bytes.
     pub offset: Size,
+    /// Row stride of the buffer in bytes.
     pub stride: Size,
 
+    /// Format plane index of the image.
     pub plane: u32,
+    /// Starting X coordinate of the image in texels.
     pub x: u32,
+    /// Starting Y coordinate of the image in texels.
     pub y: u32,
+    /// Width to copy in texels.
     pub width: u32,
+    /// Height to copy in texels.
     pub height: u32,
 }
 
+/// A trait that all backends must implement.
+///
+/// `Device` and `Bo` are the user-facing wrappers for this trait.
 pub trait Backend: Send + Sync {
+    /// Returns the memory plane count of a format and a modifier.
     fn memory_plane_count(&self, _fmt: Format, _modifier: Modifier) -> Result<u32> {
         Error::unsupported()
     }
 
+    /// Creates the opaque BO class for a BO description and a BO usage.
     fn classify(&self, desc: Description, usage: Usage) -> Result<Class> {
         dma_buf::classify(desc, usage)
     }
 
+    /// Creates a BO handle with an optional constraint.
     fn with_constraint(
         &self,
         class: &Class,
@@ -501,6 +598,7 @@ pub trait Backend: Send + Sync {
         dma_buf::with_constraint(class, extent, con)
     }
 
+    /// Creates a BO handle with an explicit physical layout.
     fn with_layout(
         &self,
         class: &Class,
@@ -511,16 +609,20 @@ pub trait Backend: Send + Sync {
         dma_buf::with_layout(class, extent, layout, dmabuf)
     }
 
+    /// Frees a BO handle.
     fn free(&self, _handle: &Handle) {}
 
+    /// Returns the physical layout of a BO handle.
     fn layout(&self, handle: &Handle) -> Layout {
         dma_buf::layout(handle)
     }
 
+    /// Returns the supported memory types of a BO handle.
     fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
         dma_buf::memory_types(handle)
     }
 
+    /// Allocates or imports a memory, and binds the memory to a BO handle.
     fn bind_memory(
         &self,
         _handle: &mut Handle,
@@ -530,26 +632,32 @@ pub trait Backend: Send + Sync {
         Error::unsupported()
     }
 
+    /// Exports a BO handle as a dma-buf.
     fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
         dma_buf::export_dma_buf(handle, name)
     }
 
+    /// Maps a BO handle for CPU access.
     fn map(&self, handle: &Handle) -> Result<Mapping> {
         dma_buf::map(handle)
     }
 
+    /// Unmaps a BO handle.
     fn unmap(&self, handle: &Handle, mapping: Mapping) {
         dma_buf::unmap(handle, mapping)
     }
 
+    /// Flushes the CPU cache for the BO mapping.
     fn flush(&self, handle: &Handle) {
         dma_buf::flush(handle);
     }
 
+    /// Invalidates the CPU cache for the BO mapping.
     fn invalidate(&self, handle: &Handle) {
         dma_buf::invalidate(handle);
     }
 
+    /// Copies between two BO handles that are both buffers.
     fn copy_buffer(
         &self,
         _dst: &Handle,
@@ -560,6 +668,7 @@ pub trait Backend: Send + Sync {
         Error::unsupported()
     }
 
+    /// Copies between two BO handles where one is a buffer and one is an image.
     fn copy_buffer_image(
         &self,
         _dst: &Handle,

@@ -1,12 +1,17 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! A backend for dma-heaps.
+//!
+//! This module provides a backend for dma-heaps.
+
 use super::{Handle, MemoryType};
 use crate::dma_buf;
 use crate::types::{Error, Result};
 use crate::utils;
 use std::os::fd::OwnedFd;
 
+/// A dma-heap backend.
 pub struct Backend {
     fd: OwnedFd,
 }
@@ -23,6 +28,7 @@ impl super::Backend for Backend {
     }
 }
 
+/// A dma-heap backend builder.
 #[derive(Default)]
 pub struct Builder {
     heap_name: Option<String>,
@@ -30,20 +36,26 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Creates a dma-heap backend builder.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Sets the name of the dma-heap to use.
     pub fn heap_name(mut self, heap_name: &str) -> Self {
         self.heap_name = Some(String::from(heap_name));
         self
     }
 
+    /// Sets the fd of the dma-heap to use.
     pub fn heap_fd(mut self, heap_fd: OwnedFd) -> Self {
         self.heap_fd = Some(heap_fd);
         self
     }
 
+    /// Builds a dma-heap backend.
+    ///
+    /// One and only one of the heap name or the heap fd must be set.
     pub fn build(self) -> Result<Backend> {
         if self.heap_name.is_some() && self.heap_fd.is_some() {
             return Error::user();

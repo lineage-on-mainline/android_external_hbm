@@ -1,6 +1,10 @@
 // Copyright 2024 Google LLC
 // SPDX-License-Identifier: MIT
 
+//! A backend for DRM KMS.
+//!
+//! This module provides a backend for DRM KMS.
+
 use super::{Class, Constraint, Description, Extent, Handle, Layout, MemoryType};
 use crate::dma_buf;
 use crate::formats;
@@ -16,17 +20,17 @@ use std::os::unix::fs::MetadataExt;
 use std::path::{Path, PathBuf};
 
 bitflags::bitflags! {
+    /// A DRM KMS backend usage.
     #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
     pub struct Usage: u32 {
+        /// The BO can be used with an overlay plane.
         const OVERLAY = 1 << 0;
+        /// The BO can be used with a cursor plane.
         const CURSOR = 1 << 1;
     }
 }
 
-pub fn open_drm_primary_device(
-    node_path: Option<PathBuf>,
-    device_id: Option<u64>,
-) -> Result<OwnedFd> {
+fn open_drm_primary_device(node_path: Option<PathBuf>, device_id: Option<u64>) -> Result<OwnedFd> {
     for path in utils::drm_scan_primary()? {
         if let Some(node_path) = &node_path {
             if *node_path != path {
@@ -70,6 +74,7 @@ impl DrmControlDevice for Device {}
 
 type FormatTable = HashMap<Format, Vec<Modifier>>;
 
+/// A DRM KMS backend.
 pub struct Backend {
     device: Device,
     alloc_only: bool,
@@ -293,6 +298,7 @@ impl super::Backend for Backend {
     }
 }
 
+/// A DRM KMS backend builder.
 #[derive(Default)]
 pub struct Builder {
     node_path: Option<PathBuf>,
@@ -302,31 +308,38 @@ pub struct Builder {
 }
 
 impl Builder {
+    /// Creates a DRM KMS backend builder.
     pub fn new() -> Self {
         Default::default()
     }
 
+    /// Sets the primary node path to use.
     pub fn node_path(mut self, node_path: impl AsRef<Path>) -> Self {
         self.node_path = Some(PathBuf::from(node_path.as_ref()));
         self
     }
 
+    /// Sets the primary node fd to use.
     pub fn node_fd(mut self, node_fd: OwnedFd) -> Self {
         self.node_fd = Some(node_fd);
         self
     }
 
-    // st_rdev
+    /// Sets the primary node device id (`st_rdev`) to use.
     pub fn device_id(mut self, device_id: u64) -> Self {
         self.device_id = Some(device_id);
         self
     }
 
+    /// Skips querying DRM KMS properties.
     pub fn alloc_only(mut self, alloc_only: bool) -> Self {
         self.alloc_only = alloc_only;
         self
     }
 
+    /// Builds a DRM KMS backend.
+    ///
+    /// One and only one of node path, node fd, or device id must be set.
     pub fn build(self) -> Result<Backend> {
         if self.node_path.is_some() as i32
             + self.node_fd.is_some() as i32
