@@ -176,42 +176,26 @@ fn best_mt_index(mts: Vec<(u32, vk::MemoryPropertyFlags)>, mt: MemoryType) -> Re
     Ok(mt_idx)
 }
 
-fn get_memory(handle: &Handle) -> Result<&sash::Memory> {
-    let mem = match &handle.payload {
-        HandlePayload::Buffer(buf) => buf.memory(),
-        HandlePayload::Image(img) => img.memory(),
-        _ => return Error::unsupported(),
-    };
-
-    Ok(mem)
+fn get_memory(handle: &Handle) -> (&sash::Memory, vk::DeviceSize) {
+    match &handle.payload {
+        HandlePayload::Buffer(buf) => (buf.memory(), buf.size()),
+        HandlePayload::Image(img) => (img.memory(), img.size()),
+        _ => unreachable!(),
+    }
 }
 
-fn get_memory_size(handle: &Handle) -> Result<vk::DeviceSize> {
-    let size = match &handle.payload {
-        HandlePayload::Buffer(buf) => buf.size(),
-        HandlePayload::Image(img) => img.size(),
-        _ => return Error::unsupported(),
-    };
-
-    Ok(size)
-}
-
-fn get_buffer(handle: &Handle) -> Result<&sash::Buffer> {
-    let buf = match &handle.payload {
+fn get_buffer(handle: &Handle) -> &sash::Buffer {
+    match &handle.payload {
         HandlePayload::Buffer(buf) => buf,
-        _ => return Error::unsupported(),
-    };
-
-    Ok(buf)
+        _ => unreachable!(),
+    }
 }
 
-fn get_image(handle: &Handle) -> Result<&sash::Image> {
-    let img = match &handle.payload {
+fn get_image(handle: &Handle) -> &sash::Image {
+    match &handle.payload {
         HandlePayload::Image(img) => img,
-        _ => return Error::unsupported(),
-    };
-
-    Ok(img)
+        _ => unreachable!(),
+    }
 }
 
 pub struct Backend {
@@ -324,11 +308,19 @@ impl super::Backend for Backend {
         Ok(handle)
     }
 
+    fn layout(&self, handle: &Handle) -> Layout {
+        match &handle.payload {
+            HandlePayload::Buffer(buf) => buf.layout(),
+            HandlePayload::Image(img) => img.layout(),
+            _ => unreachable!(),
+        }
+    }
+
     fn memory_types(&self, handle: &Handle) -> Vec<MemoryType> {
         let mts = match handle.payload {
             HandlePayload::Buffer(ref buf) => buf.memory_types(),
             HandlePayload::Image(ref img) => img.memory_types(),
-            _ => Vec::new(),
+            _ => unreachable!(),
         };
 
         mts.into_iter()
@@ -358,7 +350,7 @@ impl super::Backend for Backend {
     }
 
     fn export_dma_buf(&self, handle: &Handle, name: Option<&str>) -> Result<OwnedFd> {
-        let mem = get_memory(handle)?;
+        let (mem, _) = get_memory(handle);
         let dmabuf = mem.export_dma_buf()?;
 
         if let Some(name) = name {
@@ -368,17 +360,8 @@ impl super::Backend for Backend {
         Ok(dmabuf)
     }
 
-    fn layout(&self, handle: &Handle) -> Layout {
-        match &handle.payload {
-            HandlePayload::Buffer(buf) => buf.layout(),
-            HandlePayload::Image(img) => img.layout(),
-            _ => unreachable!(),
-        }
-    }
-
     fn map(&self, handle: &Handle) -> Result<Mapping> {
-        let mem = get_memory(handle)?;
-        let size = get_memory_size(handle)?;
+        let (mem, size) = get_memory(handle);
 
         let len = num::NonZeroUsize::try_from(usize::try_from(size)?)?;
         let ptr = mem.map(0, size)?;
@@ -389,21 +372,18 @@ impl super::Backend for Backend {
     }
 
     fn unmap(&self, handle: &Handle, _mapping: Mapping) {
-        if let Ok(mem) = get_memory(handle) {
-            mem.unmap();
-        }
+        let (mem, _) = get_memory(handle);
+        mem.unmap();
     }
 
     fn flush(&self, handle: &Handle) {
-        if let Ok(mem) = get_memory(handle) {
-            mem.flush(0, vk::WHOLE_SIZE);
-        }
+        let (mem, size) = get_memory(handle);
+        mem.flush(0, size);
     }
 
     fn invalidate(&self, handle: &Handle) {
-        if let Ok(mem) = get_memory(handle) {
-            mem.invalidate(0, vk::WHOLE_SIZE);
-        }
+        let (mem, size) = get_memory(handle);
+        mem.invalidate(0, size);
     }
 
     fn copy_buffer(
@@ -417,11 +397,9 @@ impl super::Backend for Backend {
             utils::poll(sync_fd, Access::Read)?;
         }
 
-        let dst = get_buffer(dst)?;
-        let src = get_buffer(src)?;
-        dst.copy_buffer(src, copy)?;
-
-        Ok(None)
+        let dst = get_buffer(dst);
+        let src = get_buffer(src);
+        dst.copy_buffer(src, copy).and(Ok(None))
     }
 
     fn copy_buffer_image(
@@ -436,16 +414,15 @@ impl super::Backend for Backend {
         }
 
         if let HandlePayload::Buffer(_) = &dst.payload {
-            let dst_buf = get_buffer(dst)?;
-            let src_img = get_image(src)?;
-            dst_buf.copy_image(src_img, copy)?
+            let dst_buf = get_buffer(dst);
+            let src_img = get_image(src);
+            dst_buf.copy_image(src_img, copy)
         } else {
-            let dst_img = get_image(dst)?;
-            let src_buf = get_buffer(src)?;
-            dst_img.copy_buffer(src_buf, copy)?
+            let dst_img = get_image(dst);
+            let src_buf = get_buffer(src);
+            dst_img.copy_buffer(src_buf, copy)
         }
-
-        Ok(None)
+        .and(Ok(None))
     }
 }
 

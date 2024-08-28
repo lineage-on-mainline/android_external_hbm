@@ -183,7 +183,7 @@ test_image(struct hbm_device *dev)
     hbm_bo_destroy(img_bo);
     if (img_desc.modifier != DRM_FORMAT_MOD_INVALID) {
         img_con_mods[0] = DRM_FORMAT_MOD_INVALID;
-        fprintf(stderr, "expecting failure by creating a bo with impossible constraint\n");
+        printf("expecting failure by creating a bo with impossible constraint\n");
         img_bo = hbm_bo_create_with_constraint(dev, &img_desc, &img_extent, &img_con);
         if (img_bo)
             die("unexpected img bo creation");
@@ -353,6 +353,8 @@ main(void)
     test_image(dev);
 
     hbm_device_destroy(dev);
+
+    printf("all good!\n");
 
     return 0;
 }

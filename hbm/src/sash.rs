@@ -3,7 +3,7 @@
 
 use super::backends::{Constraint, CopyBuffer, CopyBufferImage, Layout};
 use super::formats;
-use super::types::{Error, Modifier, Result, Size};
+use super::types::{Error, Modifier, Result};
 use super::utils;
 use ash::vk;
 use std::collections::HashMap;
@@ -240,7 +240,7 @@ struct PhysicalDeviceProperties {
     max_image_dimension_2d: u32,
     max_uniform_buffer_range: u32,
     max_storage_buffer_range: u32,
-    max_buffer_size: Size,
+    max_buffer_size: vk::DeviceSize,
 
     protected_memory: bool,
     image_compression_control: bool,
@@ -846,13 +846,13 @@ impl Device {
             .usage
             .contains(vk::BufferUsageFlags::UNIFORM_BUFFER)
         {
-            max_size = cmp::min(max_size, self.properties().max_uniform_buffer_range as u64);
+            max_size = cmp::min(max_size, self.properties().max_uniform_buffer_range as _);
         }
         if buf_info
             .usage
             .contains(vk::BufferUsageFlags::STORAGE_BUFFER)
         {
-            max_size = cmp::min(max_size, self.properties().max_storage_buffer_range as u64);
+            max_size = cmp::min(max_size, self.properties().max_storage_buffer_range as _);
         }
 
         let props = BufferProperties { max_size };
