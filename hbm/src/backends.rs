@@ -55,6 +55,12 @@ impl Description {
     }
 
     pub(crate) fn is_valid(&self) -> bool {
+        // the bo is useless if none of these flags is set
+        let min_flags = Flags::EXTERNAL | Flags::MAP | Flags::COPY;
+        if !self.flags.intersects(min_flags) {
+            return false;
+        }
+
         if self.is_buffer() {
             self.modifier.is_invalid()
         } else {

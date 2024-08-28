@@ -154,6 +154,7 @@ impl Bo {
             return Error::user();
         }
 
+        // TODO if the bo cannot be mapped nor copied, all we need is the dma-buf
         let backend = self.device.backend(self.backend_index);
         backend.bind_memory(&mut self.handle, mt, dmabuf)?;
 
