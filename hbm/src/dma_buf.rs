@@ -21,7 +21,7 @@ impl Resource {
         }
     }
 
-    pub fn size(&self) -> Size {
+    fn size(&self) -> Size {
         self.layout.size
     }
 
@@ -29,7 +29,7 @@ impl Resource {
         self.dmabuf = Some(dmabuf);
     }
 
-    pub fn dmabuf(&self) -> &OwnedFd {
+    fn dmabuf(&self) -> &OwnedFd {
         self.dmabuf.as_ref().unwrap()
     }
 }
