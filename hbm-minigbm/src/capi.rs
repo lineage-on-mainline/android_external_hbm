@@ -463,6 +463,11 @@ mod c {
     }
 
     pub fn fd_out(out_fd: *mut RawFd, fd: Option<OwnedFd>) {
+        if out_fd.is_null() {
+            assert!(fd.is_none());
+            return;
+        }
+
         // SAFETY: out_fd is non-NULL
         let out_fd = unsafe { &mut *out_fd };
         *out_fd = fd.map_or(-1, |fd| fd.into_raw_fd());
