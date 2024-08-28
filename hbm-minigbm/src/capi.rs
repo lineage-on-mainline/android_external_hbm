@@ -566,7 +566,7 @@ impl CDevice {
         self.device.classify(desc, slice::from_ref(&usage))
     }
 
-    fn get_class<'a>(&self, desc: hbm_description) -> Result<Arc<hbm::Class>, hbm::Error> {
+    fn get_class(&self, desc: hbm_description) -> Result<Arc<hbm::Class>, hbm::Error> {
         let mut class_cache = self.class_cache.lock().unwrap();
         let class = match class_cache.entry(desc) {
             Entry::Occupied(e) => e.into_mut(),
