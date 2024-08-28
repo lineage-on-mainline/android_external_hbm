@@ -35,6 +35,10 @@ impl Error {
     pub(crate) fn unsupported<T>() -> Result<T> {
         Err(Error::Unsupported)
     }
+
+    pub(crate) fn errno<T>(err: nix::Error) -> Result<T> {
+        Err(Error::Io(io::Error::from(err)))
+    }
 }
 
 impl From<num::TryFromIntError> for Error {

@@ -6,7 +6,7 @@ use nix::{fcntl, poll, sys, unistd};
 use std::ffi::CString;
 use std::os::fd::{AsFd, AsRawFd, FromRawFd, OwnedFd};
 use std::path::Path;
-use std::{io, num, slice};
+use std::{num, slice};
 
 pub fn makedev(major: u64, minor: u64) -> u64 {
     sys::stat::makedev(major, minor) as u64
@@ -71,7 +71,7 @@ pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
                 if ret > 0 {
                     let revents = poll_fd.revents().unwrap_or(poll::PollFlags::POLLNVAL);
                     if !(revents & !events).is_empty() {
-                        return Err(Error::from(io::Error::from(nix::Error::EINVAL)));
+                        return Error::errno(nix::Error::EINVAL);
                     }
                 }
 
@@ -81,7 +81,7 @@ pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
                 if err == nix::Error::EINTR || err == nix::Error::EAGAIN {
                     continue;
                 }
-                return Err(Error::from(io::Error::from(err)));
+                return Error::errno(err);
             }
         }
     }
@@ -150,7 +150,7 @@ mod dma_buf {
                     if err == nix::Error::EINTR || err == nix::Error::EAGAIN {
                         continue;
                     }
-                    return Err(Error::from(io::Error::from(err)));
+                    return Error::errno(err);
                 }
             }
         }
