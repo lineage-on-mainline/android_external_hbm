@@ -20,7 +20,14 @@ than via cargo.
 
 `hbm`
 
-  - quirk device and quirks
+  - multi-backend
+    - e.g., drm-kms adds alignment and modifier constraints, vulkan decides
+      the layout, dma-heap allocates dma-buf, and vulkan again maps/copies
+  - more backends, such as vaapi, v4l2, libcamera, etc.
+  - policy backend
+    - collect constraints and generate a policy offline
+    - load constraints from the policy at runtime
+    - this is useful when sandboxed or for non-queryable constraints
   - require modifiers
   - `no_std`
   - docs

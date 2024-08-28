@@ -38,6 +38,7 @@ impl Device {
         if self.backends.len() == 1 {
             self.backends[0].classify(desc, usage[0])
         } else {
+            // this is unused and needs more work
             self.multi_classify(desc, usage)
         }
     }

@@ -1,5 +1,5 @@
 use drm_fourcc::DrmFourcc;
-use hbm::{Format, MemoryType, Usage};
+use hbm::{Flags, Format, MemoryType, Usage};
 
 #[cfg(feature = "drm")]
 fn main() {
@@ -17,7 +17,9 @@ fn main() {
         .build()
         .unwrap();
 
-    let bo_desc = hbm::Description::new().format(Format(DrmFourcc::Xrgb8888 as u32));
+    let bo_desc = hbm::Description::new()
+        .flags(Flags::EXTERNAL)
+        .format(Format(DrmFourcc::Xrgb8888 as u32));
     let bo_usage = [
         Usage::DrmKms(hbm::drm_kms::Usage::OVERLAY),
         Usage::Vulkan(hbm::vulkan::Usage::COLOR),

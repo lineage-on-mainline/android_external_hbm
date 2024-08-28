@@ -22,13 +22,12 @@ struct BoState {
 
 pub struct Bo {
     device: Arc<Device>,
+    handle: Handle,
 
     flags: Flags,
     format: Format,
     backend_index: usize,
     extent: Extent,
-
-    handle: Handle,
 
     state: Mutex<BoState>,
 }
@@ -59,7 +58,7 @@ fn merge_class_to_constraint(con: Option<Constraint>, class: &Class) -> Result<O
 }
 
 impl Bo {
-    fn new(device: Arc<Device>, class: &Class, extent: Extent, handle: Handle) -> Self {
+    fn new(device: Arc<Device>, handle: Handle, class: &Class, extent: Extent) -> Self {
         let state = BoState {
             bound: false,
             mt: MemoryType::empty(),
@@ -69,11 +68,11 @@ impl Bo {
 
         Self {
             device,
+            handle,
             flags: class.flags,
             format: class.format,
             backend_index: class.backend_index,
             extent,
-            handle,
             state: Mutex::new(state),
         }
     }
@@ -92,7 +91,7 @@ impl Bo {
 
         let backend = device.backend(class.backend_index);
         let handle = backend.with_constraint(class, extent, con)?;
-        let bo = Self::new(device, class, extent, handle);
+        let bo = Self::new(device, handle, class, extent);
 
         Ok(bo)
     }
@@ -110,7 +109,7 @@ impl Bo {
 
         let backend = device.backend(class.backend_index);
         let handle = backend.with_layout(class, extent, layout, dmabuf)?;
-        let bo = Self::new(device, class, extent, handle);
+        let bo = Self::new(device, handle, class, extent);
 
         Ok(bo)
     }
@@ -149,12 +148,10 @@ impl Bo {
         }
 
         let mut state = self.state.lock().unwrap();
-
         if state.bound {
             return Error::user();
         }
 
-        // TODO if the bo cannot be mapped nor copied, all we need is the dma-buf
         let backend = self.device.backend(self.backend_index);
         backend.bind_memory(&mut self.handle, mt, dmabuf)?;
 
@@ -301,17 +298,15 @@ impl Bo {
             && copy.height <= height - copy.y
     }
 
-    fn wait_copy(&self, sync_fd: Option<OwnedFd>, wait: bool) -> Result<Option<OwnedFd>> {
-        let sync_fd = if wait {
+    fn wait_copy(&self, sync_fd: Option<OwnedFd>, wait: bool) -> Option<OwnedFd> {
+        if wait {
             sync_fd.and_then(|sync_fd| {
                 let _ = utils::poll(sync_fd, Access::Read);
                 None
             })
         } else {
             sync_fd
-        };
-
-        Ok(sync_fd)
+        }
     }
 
     pub fn copy_buffer(
@@ -325,11 +320,9 @@ impl Bo {
             return Error::user();
         }
 
-        let sync_fd = self
-            .backend()
-            .copy_buffer(&self.handle, &src.handle, copy, sync_fd)?;
-
-        self.wait_copy(sync_fd, wait)
+        self.backend()
+            .copy_buffer(&self.handle, &src.handle, copy, sync_fd)
+            .map(|sync_fd| self.wait_copy(sync_fd, wait))
     }
 
     pub fn copy_buffer_image(
@@ -343,11 +336,9 @@ impl Bo {
             return Error::user();
         }
 
-        let sync_fd = self
-            .backend()
-            .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd)?;
-
-        self.wait_copy(sync_fd, wait)
+        self.backend()
+            .copy_buffer_image(&self.handle, &src.handle, copy, sync_fd)
+            .map(|sync_fd| self.wait_copy(sync_fd, wait))
     }
 }
 
