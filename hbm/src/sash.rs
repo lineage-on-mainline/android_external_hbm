@@ -84,12 +84,6 @@ fn can_export_import(props: vk::ExternalMemoryProperties) -> Result<()> {
     }
 }
 
-struct Instance {
-    // unused, but it keeps the library loaded
-    _entry: ash::Entry,
-    handle: ash::Instance,
-}
-
 unsafe extern "system" fn debug_utils_messenger(
     severity: vk::DebugUtilsMessageSeverityFlagsEXT,
     _types: vk::DebugUtilsMessageTypeFlagsEXT,
@@ -133,6 +127,12 @@ unsafe extern "system" fn debug_utils_messenger(
     }
 
     vk::FALSE
+}
+
+struct Instance {
+    // unused, but it keeps the library loaded
+    _entry: ash::Entry,
+    handle: ash::Instance,
 }
 
 impl Instance {
@@ -215,10 +215,8 @@ impl Instance {
 
         Ok(handle)
     }
-}
 
-impl Drop for Instance {
-    fn drop(&mut self) {
+    fn destroy(&self) {
         // SAFETY: no VUID violation
         unsafe {
             self.handle.destroy_instance(None);
@@ -226,14 +224,20 @@ impl Drop for Instance {
     }
 }
 
-struct FormatProperties {
-    format_class: &'static formats::FormatClass,
-    modifiers: Vec<vk::DrmFormatModifierPropertiesEXT>,
+impl Drop for Instance {
+    fn drop(&mut self) {
+        self.destroy();
+    }
 }
 
 #[derive(Default)]
 struct DeviceCreateInfo {
     extensions: [bool; ExtId::Count as usize],
+}
+
+struct FormatProperties {
+    format_class: &'static formats::FormatClass,
+    modifiers: Vec<vk::DrmFormatModifierPropertiesEXT>,
 }
 
 #[derive(Default)]
@@ -741,11 +745,10 @@ impl Device {
         }
     }
 
-    fn get_queue(&self) -> vk::Queue {
-        // SAFETY: queue_family has 1 queue
+    fn destroy(&self) {
+        // SAFETY: no VUID violation
         unsafe {
-            self.handle
-                .get_device_queue(self.properties().queue_family, 0)
+            self.handle.destroy_device(None);
         }
     }
 
@@ -755,6 +758,24 @@ impl Device {
 
     fn properties(&self) -> &PhysicalDeviceProperties {
         &self.physical_device.properties
+    }
+
+    fn get_queue(&self) -> vk::Queue {
+        // SAFETY: queue_family has 1 queue
+        unsafe {
+            self.handle
+                .get_device_queue(self.properties().queue_family, 0)
+        }
+    }
+
+    fn format_plane_count(&self, fmt: vk::Format) -> u32 {
+        let fmt_props = self.properties().formats.get(&fmt).unwrap();
+        fmt_props.format_class.plane_count as u32
+    }
+
+    fn format_block_size(&self, fmt: vk::Format, plane: u32) -> u32 {
+        let fmt_props = self.properties().formats.get(&fmt).unwrap();
+        fmt_props.format_class.block_size[plane as usize] as u32
     }
 
     pub fn memory_plane_count(&self, fmt: vk::Format, modifier: Modifier) -> Result<u32> {
@@ -775,16 +796,6 @@ impl Device {
                 }
             })
             .ok_or(Error::Unsupported)
-    }
-
-    fn format_plane_count(&self, fmt: vk::Format) -> u32 {
-        let fmt_props = self.properties().formats.get(&fmt).unwrap();
-        fmt_props.format_class.plane_count as u32
-    }
-
-    fn format_block_size(&self, fmt: vk::Format, plane: u32) -> u32 {
-        let fmt_props = self.properties().formats.get(&fmt).unwrap();
-        fmt_props.format_class.block_size[plane as usize] as u32
     }
 
     pub fn buffer_properties(&self, buf_info: BufferInfo) -> Result<BufferProperties> {
@@ -909,7 +920,7 @@ impl Device {
     pub fn image_properties(
         &self,
         img_info: ImageInfo,
-        mut modifier: Modifier,
+        modifier: Modifier,
     ) -> Result<ImageProperties> {
         if img_info.flags.contains(vk::ImageCreateFlags::PROTECTED)
             && !self.properties().protected_memory
@@ -917,6 +928,7 @@ impl Device {
             return Error::unsupported();
         }
 
+        let mut modifier = modifier;
         let mut compression = vk::ImageCompressionFlagsEXT::DEFAULT;
         if img_info.no_compression {
             if self.properties().image_compression_control {
@@ -1033,10 +1045,7 @@ impl Device {
 
 impl Drop for Device {
     fn drop(&mut self) {
-        // SAFETY: no VUID violation
-        unsafe {
-            self.handle.destroy_device(None);
-        }
+        self.destroy();
     }
 }
 
@@ -1146,6 +1155,13 @@ impl Memory {
         Ok(handle)
     }
 
+    fn destroy(&self) {
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.free_memory(self.handle, None);
+        }
+    }
+
     pub fn export_dma_buf(&self) -> Result<OwnedFd> {
         let fd_info = vk::MemoryGetFdInfoKHR::default()
             .memory(self.handle)
@@ -1208,10 +1224,7 @@ impl Memory {
 
 impl Drop for Memory {
     fn drop(&mut self) {
-        // SAFETY: no VUID violation
-        unsafe {
-            self.device.handle.free_memory(self.handle, None);
-        }
+        self.destroy();
     }
 }
 
@@ -1319,6 +1332,13 @@ impl Buffer {
         self.mt_mask = reqs.memory_type_bits;
     }
 
+    fn destroy(&self) {
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.destroy_buffer(self.handle, None);
+        }
+    }
+
     pub fn size(&self) -> vk::DeviceSize {
         self.size
     }
@@ -1361,10 +1381,7 @@ impl Buffer {
 
 impl Drop for Buffer {
     fn drop(&mut self) {
-        // SAFETY: no VUID violation
-        unsafe {
-            self.device.handle.destroy_buffer(self.handle, None);
-        }
+        self.destroy();
     }
 }
 
@@ -1618,6 +1635,13 @@ impl Image {
         self.mt_mask = reqs.memory_type_bits;
     }
 
+    fn destroy(&self) {
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.destroy_image(self.handle, None);
+        }
+    }
+
     pub fn size(&self) -> vk::DeviceSize {
         self.size
     }
@@ -1748,10 +1772,7 @@ impl Image {
 
 impl Drop for Image {
     fn drop(&mut self) {
-        // SAFETY: no VUID violation
-        unsafe {
-            self.device.handle.destroy_image(self.handle, None);
-        }
+        self.destroy();
     }
 }
 
@@ -1821,18 +1842,11 @@ impl SimpleCommandBuffer {
     }
 
     fn destroy(&self) {
-        self.destroy_command_pool();
-        self.destroy_fence();
-    }
-
-    fn destroy_command_pool(&self) {
         // SAFETY: no VUID violation unless pending_forever is true
         unsafe {
             self.device.handle.destroy_command_pool(self.pool, None);
         }
-    }
 
-    fn destroy_fence(&self) {
         // SAFETY: no VUID violation unless pending_forever is true
         unsafe {
             self.device.handle.destroy_fence(self.fence, None);
