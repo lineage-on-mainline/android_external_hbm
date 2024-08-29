@@ -1029,65 +1029,6 @@ impl Device {
             })
             .collect()
     }
-
-    fn get_image_subresource_aspect(
-        &self,
-        tiling: vk::ImageTiling,
-        mem_plane_count: u32,
-        plane: u32,
-    ) -> vk::ImageAspectFlags {
-        match tiling {
-            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => match plane {
-                0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
-                1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
-                2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
-                3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
-                _ => unreachable!(),
-            },
-            vk::ImageTiling::LINEAR | vk::ImageTiling::OPTIMAL => match plane {
-                0 => {
-                    if mem_plane_count > 1 {
-                        vk::ImageAspectFlags::PLANE_0
-                    } else {
-                        vk::ImageAspectFlags::COLOR
-                    }
-                }
-                1 => vk::ImageAspectFlags::PLANE_1,
-                2 => vk::ImageAspectFlags::PLANE_2,
-                _ => unreachable!(),
-            },
-            _ => unreachable!(),
-        }
-    }
-
-    fn get_image_layout(
-        &self,
-        handle: vk::Image,
-        tiling: vk::ImageTiling,
-        fmt: vk::Format,
-        modifier: Modifier,
-        size: vk::DeviceSize,
-    ) -> Layout {
-        let mem_plane_count = self.memory_plane_count(fmt, modifier).unwrap();
-        let mut layout = Layout::new()
-            .size(size)
-            .modifier(modifier)
-            .plane_count(mem_plane_count);
-
-        for plane in 0..mem_plane_count {
-            let aspect = self.get_image_subresource_aspect(tiling, mem_plane_count, plane);
-            let subres = vk::ImageSubresource::default().aspect_mask(aspect);
-
-            // SAFETY: VUID-vkGetImageSubresourceLayout-image-07790 violation when tiling is
-            // vk::ImageTiling::OPTIMAL (only on radv+gfx8)
-            let subres_layout = unsafe { self.handle.get_image_subresource_layout(handle, subres) };
-
-            layout.offsets[plane as usize] = subres_layout.offset;
-            layout.strides[plane as usize] = subres_layout.row_pitch;
-        }
-
-        layout
-    }
 }
 
 impl Drop for Device {
@@ -1681,14 +1622,62 @@ impl Image {
         self.size
     }
 
+    fn get_image_subresource_aspect(
+        &self,
+        mem_plane_count: u32,
+        plane: u32,
+    ) -> vk::ImageAspectFlags {
+        match self.tiling {
+            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => match plane {
+                0 => vk::ImageAspectFlags::MEMORY_PLANE_0_EXT,
+                1 => vk::ImageAspectFlags::MEMORY_PLANE_1_EXT,
+                2 => vk::ImageAspectFlags::MEMORY_PLANE_2_EXT,
+                3 => vk::ImageAspectFlags::MEMORY_PLANE_3_EXT,
+                _ => unreachable!(),
+            },
+            vk::ImageTiling::LINEAR | vk::ImageTiling::OPTIMAL => match plane {
+                0 => {
+                    if mem_plane_count > 1 {
+                        vk::ImageAspectFlags::PLANE_0
+                    } else {
+                        vk::ImageAspectFlags::COLOR
+                    }
+                }
+                1 => vk::ImageAspectFlags::PLANE_1,
+                2 => vk::ImageAspectFlags::PLANE_2,
+                _ => unreachable!(),
+            },
+            _ => unreachable!(),
+        }
+    }
+
     pub fn layout(&self) -> Layout {
-        self.device.get_image_layout(
-            self.handle,
-            self.tiling,
-            self.format,
-            self.modifier,
-            self.size,
-        )
+        let mem_plane_count = self
+            .device
+            .memory_plane_count(self.format, self.modifier)
+            .unwrap();
+        let mut layout = Layout::new()
+            .size(self.size)
+            .modifier(self.modifier)
+            .plane_count(mem_plane_count);
+
+        for plane in 0..mem_plane_count {
+            let aspect = self.get_image_subresource_aspect(mem_plane_count, plane);
+            let subres = vk::ImageSubresource::default().aspect_mask(aspect);
+
+            // SAFETY: VUID-vkGetImageSubresourceLayout-image-07790 violation when tiling is
+            // vk::ImageTiling::OPTIMAL (only on radv+gfx8)
+            let subres_layout = unsafe {
+                self.device
+                    .handle
+                    .get_image_subresource_layout(self.handle, subres)
+            };
+
+            layout.offsets[plane as usize] = subres_layout.offset;
+            layout.strides[plane as usize] = subres_layout.row_pitch;
+        }
+
+        layout
     }
 
     pub fn memory_types(
