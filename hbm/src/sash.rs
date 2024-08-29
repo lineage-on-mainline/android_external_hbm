@@ -1030,28 +1030,6 @@ impl Device {
             .collect()
     }
 
-    fn get_image_modifier(&self, handle: vk::Image, tiling: vk::ImageTiling) -> Result<Modifier> {
-        let modifier = match tiling {
-            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => {
-                let mut mod_props = vk::ImageDrmFormatModifierPropertiesEXT::default();
-
-                // SAFETY: no VUID violation
-                unsafe {
-                    self.dispatch
-                        .modifier
-                        .get_image_drm_format_modifier_properties(handle, &mut mod_props)
-                }?;
-
-                Modifier(mod_props.drm_format_modifier)
-            }
-            vk::ImageTiling::LINEAR => formats::MOD_LINEAR,
-            vk::ImageTiling::OPTIMAL => formats::MOD_INVALID,
-            _ => unreachable!(),
-        };
-
-        Ok(modifier)
-    }
-
     fn get_image_subresource_aspect(
         &self,
         tiling: vk::ImageTiling,
@@ -1487,7 +1465,7 @@ impl Image {
             memory: None,
         };
 
-        img.modifier = img.device.get_image_modifier(img.handle, tiling)?;
+        img.init_modifier()?;
         img.init_memory_requirements();
 
         Ok(img)
@@ -1656,6 +1634,31 @@ impl Image {
         let handle = unsafe { dev.handle.create_image(&img_info, None) }?;
 
         Ok(handle)
+    }
+
+    fn init_modifier(&mut self) -> Result<()> {
+        let modifier = match self.tiling {
+            vk::ImageTiling::DRM_FORMAT_MODIFIER_EXT => {
+                let mut mod_props = vk::ImageDrmFormatModifierPropertiesEXT::default();
+
+                // SAFETY: no VUID violation
+                unsafe {
+                    self.device
+                        .dispatch
+                        .modifier
+                        .get_image_drm_format_modifier_properties(self.handle, &mut mod_props)
+                }?;
+
+                Modifier(mod_props.drm_format_modifier)
+            }
+            vk::ImageTiling::LINEAR => formats::MOD_LINEAR,
+            vk::ImageTiling::OPTIMAL => formats::MOD_INVALID,
+            _ => unreachable!(),
+        };
+
+        self.modifier = modifier;
+
+        Ok(())
     }
 
     fn init_memory_requirements(&mut self) {
