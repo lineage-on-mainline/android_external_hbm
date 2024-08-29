@@ -5,14 +5,14 @@
 //!
 //! This module provides a safe allocator using ash.
 
-use super::backends::{Constraint, CopyBuffer, CopyBufferImage, Layout};
+use super::backends::{Constraint, CopyBufferImage, Layout};
 use super::formats;
 use super::types::{Error, Modifier, Result};
 use super::utils;
 use ash::vk;
 use std::collections::HashMap;
 use std::os::fd::{AsFd, AsRawFd, BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
-use std::sync::{Arc, Mutex};
+use std::sync::{atomic, Arc, Mutex};
 use std::{cmp, ffi, ptr, slice, thread};
 
 const REQUIRED_API_VERSION: u32 = vk::API_VERSION_1_1;
@@ -617,28 +617,6 @@ pub struct ImageProperties {
     pub modifiers: Vec<Modifier>,
 }
 
-#[derive(PartialEq)]
-enum PipelineBarrierType {
-    AcquireSrc,
-    AcquireDst,
-    ReleaseSrc,
-    ReleaseDst,
-}
-
-struct PipelineBarrierScope {
-    dependency_flags: vk::DependencyFlags,
-
-    src_queue_family: u32,
-    src_stage_mask: vk::PipelineStageFlags,
-    src_access_mask: vk::AccessFlags,
-    src_image_layout: vk::ImageLayout,
-
-    dst_queue_family: u32,
-    dst_stage_mask: vk::PipelineStageFlags,
-    dst_access_mask: vk::AccessFlags,
-    dst_image_layout: vk::ImageLayout,
-}
-
 // this is for scanout hack
 #[repr(C)]
 struct WsiImageCreateInfoMESA {
@@ -675,10 +653,6 @@ pub struct Device {
     physical_device: PhysicalDevice,
     handle: ash::Device,
     dispatch: DeviceDispatch,
-
-    // TODO add a wrapper for Device and move these to the wrapper
-    queue: Mutex<vk::Queue>,
-    command_buffer: PerThreadCommandBuffer,
 }
 
 impl Device {
@@ -701,15 +675,11 @@ impl Device {
     fn new(physical_device: PhysicalDevice, dev_info: DeviceCreateInfo) -> Result<Self> {
         let handle = Self::create_device(&physical_device, dev_info)?;
         let dispatch = Self::create_dispatch(&handle, &physical_device);
-        let mut dev = Self {
+        let dev = Self {
             physical_device,
             handle,
             dispatch,
-            queue: Mutex::new(Default::default()),
-            command_buffer: Default::default(),
         };
-
-        dev.init();
 
         Ok(dev)
     }
@@ -771,14 +741,12 @@ impl Device {
         }
     }
 
-    fn init(&mut self) {
+    fn get_queue(&self) -> vk::Queue {
         // SAFETY: queue_family has 1 queue
-        let queue = unsafe {
+        unsafe {
             self.handle
                 .get_device_queue(self.properties().queue_family, 0)
-        };
-
-        *self.queue.lock().unwrap() = queue;
+        }
     }
 
     fn instance_handle(&self) -> &ash::Instance {
@@ -1142,451 +1110,13 @@ impl Device {
 
         layout
     }
-
-    fn get_pipeline_barrier_scope(&self, ty: PipelineBarrierType) -> PipelineBarrierScope {
-        // We assume all resources are owned by the foreign queue and, in the case of images, have
-        // been initialized to the GENERAL layout.  Strictly speaking, the layout part is not
-        // guaranteed unless we always explicitly transition the layout and release the ownership
-        // during image creation.
-        let src_queue_family;
-        let src_stage_mask;
-        let src_access_mask;
-        let src_image_layout;
-        let dst_queue_family;
-        let dst_stage_mask;
-        let dst_access_mask;
-        let dst_image_layout;
-        match ty {
-            PipelineBarrierType::AcquireSrc | PipelineBarrierType::AcquireDst => {
-                src_queue_family = vk::QUEUE_FAMILY_FOREIGN_EXT;
-                src_stage_mask = vk::PipelineStageFlags::NONE;
-                src_access_mask = vk::AccessFlags::NONE;
-                src_image_layout = vk::ImageLayout::GENERAL;
-
-                dst_queue_family = self.properties().queue_family;
-                dst_stage_mask = vk::PipelineStageFlags::TRANSFER;
-                if ty == PipelineBarrierType::AcquireSrc {
-                    dst_access_mask = vk::AccessFlags::TRANSFER_READ;
-                    dst_image_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
-                } else {
-                    dst_access_mask = vk::AccessFlags::TRANSFER_WRITE;
-                    dst_image_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
-                }
-            }
-            PipelineBarrierType::ReleaseSrc | PipelineBarrierType::ReleaseDst => {
-                src_queue_family = self.properties().queue_family;
-                if ty == PipelineBarrierType::ReleaseSrc {
-                    src_stage_mask = vk::PipelineStageFlags::NONE;
-                    src_access_mask = vk::AccessFlags::NONE;
-                    src_image_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
-                } else {
-                    src_stage_mask = vk::PipelineStageFlags::TRANSFER;
-                    src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
-                    src_image_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
-                }
-
-                dst_queue_family = vk::QUEUE_FAMILY_FOREIGN_EXT;
-                dst_stage_mask = vk::PipelineStageFlags::NONE;
-                dst_access_mask = vk::AccessFlags::NONE;
-                dst_image_layout = vk::ImageLayout::GENERAL;
-            }
-        }
-
-        PipelineBarrierScope {
-            dependency_flags: vk::DependencyFlags::empty(),
-            src_queue_family,
-            src_stage_mask,
-            src_access_mask,
-            src_image_layout,
-            dst_queue_family,
-            dst_stage_mask,
-            dst_access_mask,
-            dst_image_layout,
-        }
-    }
-
-    fn cmd_buffer_barrier(
-        &self,
-        cmd: vk::CommandBuffer,
-        buf: vk::Buffer,
-        scope: PipelineBarrierScope,
-    ) {
-        let buf_barrier = vk::BufferMemoryBarrier::default()
-            .src_access_mask(scope.src_access_mask)
-            .dst_access_mask(scope.dst_access_mask)
-            .src_queue_family_index(scope.src_queue_family)
-            .dst_queue_family_index(scope.dst_queue_family)
-            .buffer(buf)
-            .size(vk::WHOLE_SIZE);
-
-        // SAFETY: no VUID violation
-        unsafe {
-            self.handle.cmd_pipeline_barrier(
-                cmd,
-                scope.src_stage_mask,
-                scope.dst_stage_mask,
-                scope.dependency_flags,
-                &[],
-                slice::from_ref(&buf_barrier),
-                &[],
-            );
-        }
-    }
-
-    fn cmd_image_barrier(
-        &self,
-        cmd: vk::CommandBuffer,
-        img: vk::Image,
-        aspect: vk::ImageAspectFlags,
-        scope: PipelineBarrierScope,
-    ) {
-        let img_subres = vk::ImageSubresourceRange::default()
-            .aspect_mask(aspect)
-            .level_count(1)
-            .layer_count(1);
-        let img_barrier = vk::ImageMemoryBarrier::default()
-            .src_access_mask(scope.src_access_mask)
-            .dst_access_mask(scope.dst_access_mask)
-            .old_layout(scope.src_image_layout)
-            .new_layout(scope.dst_image_layout)
-            .src_queue_family_index(scope.src_queue_family)
-            .dst_queue_family_index(scope.dst_queue_family)
-            .image(img)
-            .subresource_range(img_subres);
-
-        // SAFETY: VUID-VkImageMemoryBarrier-oldLayout-01197 violation on first image acquire (see
-        // get_pipeline_barrier_scope)
-        unsafe {
-            self.handle.cmd_pipeline_barrier(
-                cmd,
-                scope.src_stage_mask,
-                scope.dst_stage_mask,
-                scope.dependency_flags,
-                &[],
-                &[],
-                slice::from_ref(&img_barrier),
-            );
-        }
-    }
-
-    fn copy_buffer(&self, src: vk::Buffer, dst: vk::Buffer, region: vk::BufferCopy) -> Result<()> {
-        let cmd = self.command_buffer.session(self)?;
-
-        let src_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
-        let dst_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
-        let src_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
-        let dst_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
-
-        self.cmd_buffer_barrier(cmd.handle, src, src_acquire);
-        self.cmd_buffer_barrier(cmd.handle, dst, dst_acquire);
-
-        // SAFETY: no VUID violation
-        unsafe {
-            self.handle
-                .cmd_copy_buffer(cmd.handle, src, dst, slice::from_ref(&region));
-        }
-
-        self.cmd_buffer_barrier(cmd.handle, src, src_release);
-        self.cmd_buffer_barrier(cmd.handle, dst, dst_release);
-
-        cmd.execute()
-    }
-
-    fn copy_image_to_buffer(
-        &self,
-        img: vk::Image,
-        buf: vk::Buffer,
-        region: vk::BufferImageCopy,
-    ) -> Result<()> {
-        let cmd = self.command_buffer.session(self)?;
-
-        let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
-        let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
-        let img_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
-        let buf_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
-        let img_aspect = region.image_subresource.aspect_mask;
-        let img_layout = img_acquire.dst_image_layout;
-
-        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_acquire);
-        self.cmd_buffer_barrier(cmd.handle, buf, buf_acquire);
-
-        // SAFETY: no VUID violation
-        unsafe {
-            self.handle.cmd_copy_image_to_buffer(
-                cmd.handle,
-                img,
-                img_layout,
-                buf,
-                slice::from_ref(&region),
-            );
-        }
-
-        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_release);
-        self.cmd_buffer_barrier(cmd.handle, buf, buf_release);
-
-        cmd.execute()
-    }
-
-    fn copy_buffer_to_image(
-        &self,
-        buf: vk::Buffer,
-        img: vk::Image,
-        region: vk::BufferImageCopy,
-    ) -> Result<()> {
-        let cmd = self.command_buffer.session(self)?;
-
-        let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
-        let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
-        let buf_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
-        let img_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
-        let img_aspect = region.image_subresource.aspect_mask;
-        let img_layout = img_acquire.dst_image_layout;
-
-        self.cmd_buffer_barrier(cmd.handle, buf, buf_acquire);
-        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_acquire);
-
-        // SAFETY: no VUID violation
-        unsafe {
-            self.handle.cmd_copy_buffer_to_image(
-                cmd.handle,
-                buf,
-                img,
-                img_layout,
-                slice::from_ref(&region),
-            );
-        }
-
-        self.cmd_buffer_barrier(cmd.handle, buf, buf_release);
-        self.cmd_image_barrier(cmd.handle, img, img_aspect, img_release);
-
-        cmd.execute()
-    }
 }
 
 impl Drop for Device {
     fn drop(&mut self) {
-        self.command_buffer.destroy(self);
-
         // SAFETY: no VUID violation
         unsafe {
             self.handle.destroy_device(None);
-        }
-    }
-}
-
-struct CommandBufferSession<'a> {
-    device: &'a Device,
-    handle: vk::CommandBuffer,
-    fence: vk::Fence,
-}
-
-impl<'a> CommandBufferSession<'a> {
-    fn new(device: &'a Device, handle: vk::CommandBuffer, fence: vk::Fence) -> Result<Self> {
-        let cmd = Self {
-            device,
-            handle,
-            fence,
-        };
-
-        cmd.reset()?;
-        cmd.begin()?;
-
-        Ok(cmd)
-    }
-
-    fn execute(self) -> Result<()> {
-        self.end()?;
-        self.submit()?;
-        self.wait()
-    }
-
-    fn reset(&self) -> Result<()> {
-        // SAFETY: no VUID violation becase we always pair new() and execute()
-        unsafe {
-            self.device
-                .handle
-                .reset_fences(slice::from_ref(&self.fence))
-        }
-        .map_err(Error::from)
-    }
-
-    fn begin(&self) -> Result<()> {
-        let begin_info = vk::CommandBufferBeginInfo::default()
-            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
-
-        // SAFETY: no VUID violation becase we always pair new() and execute()
-        unsafe {
-            self.device
-                .handle
-                .begin_command_buffer(self.handle, &begin_info)
-        }
-        .map_err(Error::from)
-    }
-
-    fn end(&self) -> Result<()> {
-        // SAFETY: no VUID violation becase we always pair new() and execute()
-        unsafe { self.device.handle.end_command_buffer(self.handle) }.map_err(Error::from)
-    }
-
-    fn submit(&self) -> Result<()> {
-        let submit_info = vk::SubmitInfo::default().command_buffers(slice::from_ref(&self.handle));
-        let queue = self.device.queue.lock().unwrap();
-        // SAFETY: no VUID violation
-        unsafe {
-            self.device
-                .handle
-                .queue_submit(*queue, slice::from_ref(&submit_info), self.fence)
-        }
-        .map_err(Error::from)
-    }
-
-    fn wait(&self) -> Result<()> {
-        // SAFETY: no VUID violation
-        unsafe {
-            self.device
-                .handle
-                .wait_for_fences(slice::from_ref(&self.fence), true, u64::MAX)
-        }
-        .map_err(|res| {
-            if res != vk::Result::ERROR_DEVICE_LOST {
-                self.device.command_buffer.mark_unusable();
-            }
-            Error::from(res)
-        })
-    }
-}
-
-struct CommandBuffer {
-    pool: vk::CommandPool,
-    handle: vk::CommandBuffer,
-    fence: vk::Fence,
-    usable: bool,
-}
-
-impl CommandBuffer {
-    fn new(dev: &Device) -> Result<Self> {
-        let mut cmd = Self {
-            pool: Default::default(),
-            handle: Default::default(),
-            fence: Default::default(),
-            usable: true,
-        };
-        cmd.init(dev).inspect_err(|_| cmd.destroy(dev))?;
-
-        Ok(cmd)
-    }
-
-    fn init(&mut self, dev: &Device) -> Result<()> {
-        self.pool = Self::create_command_pool(dev)?;
-        self.handle = Self::allocate_command_buffer(dev, self.pool)?;
-        self.fence = Self::create_fence(dev)?;
-
-        Ok(())
-    }
-
-    fn create_command_pool(dev: &Device) -> Result<vk::CommandPool> {
-        let pool_info = vk::CommandPoolCreateInfo::default()
-            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
-            .queue_family_index(dev.properties().queue_family);
-
-        // SAFETY: no VUID violation
-        unsafe { dev.handle.create_command_pool(&pool_info, None) }.map_err(Error::from)
-    }
-
-    fn destroy_command_pool(dev: &Device, pool: vk::CommandPool) {
-        // SAFETY: no VUID violation
-        unsafe {
-            dev.handle.destroy_command_pool(pool, None);
-        }
-    }
-
-    fn allocate_command_buffer(dev: &Device, pool: vk::CommandPool) -> Result<vk::CommandBuffer> {
-        let alloc_info = vk::CommandBufferAllocateInfo::default()
-            .command_pool(pool)
-            .level(vk::CommandBufferLevel::PRIMARY)
-            .command_buffer_count(1);
-
-        // SAFETY: no VUID violation
-        let cmds = unsafe { dev.handle.allocate_command_buffers(&alloc_info) }?;
-
-        Ok(cmds[0])
-    }
-
-    fn create_fence(dev: &Device) -> Result<vk::Fence> {
-        let fence_info = vk::FenceCreateInfo::default();
-
-        // SAFETY: no VUID violation
-        unsafe { dev.handle.create_fence(&fence_info, None) }.map_err(Error::from)
-    }
-
-    fn destroy_fence(dev: &Device, fence: vk::Fence) {
-        // SAFETY: no VUID violation
-        unsafe {
-            dev.handle.destroy_fence(fence, None);
-        }
-    }
-
-    fn destroy(&self, dev: &Device) {
-        Self::destroy_command_pool(dev, self.pool);
-        Self::destroy_fence(dev, self.fence);
-    }
-}
-
-#[derive(Default)]
-struct PerThreadCommandBuffer {
-    cmds: Mutex<HashMap<thread::ThreadId, CommandBuffer>>,
-}
-
-impl PerThreadCommandBuffer {
-    fn session<'a>(&self, dev: &'a Device) -> Result<CommandBufferSession<'a>> {
-        let (handle, fence) = match self.lookup() {
-            Some((handle, fence, usable)) => {
-                if usable {
-                    (handle, fence)
-                } else {
-                    return Error::device();
-                }
-            }
-            None => self.create(dev)?,
-        };
-
-        CommandBufferSession::new(dev, handle, fence)
-    }
-
-    fn lookup(&self) -> Option<(vk::CommandBuffer, vk::Fence, bool)> {
-        let tid = thread::current().id();
-        let cmds = self.cmds.lock().unwrap();
-
-        cmds.get(&tid)
-            .map(|cmd| (cmd.handle, cmd.fence, cmd.usable))
-    }
-
-    fn create(&self, dev: &Device) -> Result<(vk::CommandBuffer, vk::Fence)> {
-        let cmd = CommandBuffer::new(dev)?;
-        let handle = cmd.handle;
-        let fence = cmd.fence;
-
-        let tid = thread::current().id();
-        let mut cmds = self.cmds.lock().unwrap();
-
-        cmds.insert(tid, cmd);
-
-        Ok((handle, fence))
-    }
-
-    fn mark_unusable(&self) {
-        let tid = thread::current().id();
-        let mut cmds = self.cmds.lock().unwrap();
-
-        cmds.entry(tid).and_modify(|cmd| {
-            cmd.usable = false;
-        });
-    }
-
-    fn destroy(&self, dev: &Device) {
-        let mut cmds = self.cmds.lock().unwrap();
-        for (_, cmd) in cmds.drain() {
-            cmd.destroy(dev);
         }
     }
 }
@@ -1713,7 +1243,7 @@ impl Memory {
     pub fn map(&self, offset: vk::DeviceSize, size: vk::DeviceSize) -> Result<*mut ffi::c_void> {
         let flags = vk::MemoryMapFlags::empty();
 
-        // SAFETY: no VUID violation becase the caller always maps the entire memory
+        // SAFETY: no VUID violation because the caller always maps the entire memory
         let ptr = unsafe {
             self.device
                 .handle
@@ -1907,22 +1437,6 @@ impl Buffer {
 
     pub fn memory(&self) -> &Memory {
         self.memory.as_ref().unwrap()
-    }
-
-    pub fn copy_buffer(&self, src: &Buffer, copy: CopyBuffer) -> Result<()> {
-        let region = vk::BufferCopy::default()
-            .src_offset(copy.src_offset)
-            .dst_offset(copy.dst_offset)
-            .size(copy.size);
-
-        self.device.copy_buffer(src.handle, self.handle, region)
-    }
-
-    pub fn copy_image(&self, src: &Image, copy: CopyBufferImage) -> Result<()> {
-        let region = src.get_copy_region(copy);
-
-        self.device
-            .copy_image_to_buffer(src.handle, self.handle, region)
     }
 }
 
@@ -2205,7 +1719,7 @@ impl Image {
         self.memory.as_ref().unwrap()
     }
 
-    fn get_copy_region(&self, copy: CopyBufferImage) -> vk::BufferImageCopy {
+    pub fn get_copy_region(&self, copy: CopyBufferImage) -> vk::BufferImageCopy {
         let aspect = match copy.plane {
             0 => {
                 if self.format_plane_count > 1 {
@@ -2238,13 +1752,6 @@ impl Image {
             .image_offset(offset)
             .image_extent(extent)
     }
-
-    pub fn copy_buffer(&self, src: &Buffer, copy: CopyBufferImage) -> Result<()> {
-        let region = self.get_copy_region(copy);
-
-        self.device
-            .copy_buffer_to_image(src.handle, self.handle, region)
-    }
 }
 
 impl Drop for Image {
@@ -2253,5 +1760,460 @@ impl Drop for Image {
         unsafe {
             self.device.handle.destroy_image(self.handle, None);
         }
+    }
+}
+
+struct SimpleCommandBuffer {
+    device: Arc<Device>,
+    pool: vk::CommandPool,
+    handle: vk::CommandBuffer,
+    fence: vk::Fence,
+    pending_forever: atomic::AtomicBool,
+}
+
+impl SimpleCommandBuffer {
+    fn new(device: Arc<Device>) -> Result<Self> {
+        let mut cmd = Self {
+            device,
+            pool: Default::default(),
+            handle: Default::default(),
+            fence: Default::default(),
+            pending_forever: atomic::AtomicBool::new(false),
+        };
+        cmd.init()?;
+
+        Ok(cmd)
+    }
+
+    fn init(&mut self) -> Result<()> {
+        self.init_command_pool()?;
+        self.init_command_buffer()?;
+        self.init_fence()?;
+
+        Ok(())
+    }
+
+    fn init_command_pool(&mut self) -> Result<()> {
+        let pool_info = vk::CommandPoolCreateInfo::default()
+            .flags(vk::CommandPoolCreateFlags::RESET_COMMAND_BUFFER)
+            .queue_family_index(self.device.properties().queue_family);
+
+        // SAFETY: no VUID violation
+        self.pool = unsafe { self.device.handle.create_command_pool(&pool_info, None) }
+            .map_err(Error::from)?;
+
+        Ok(())
+    }
+
+    fn init_command_buffer(&mut self) -> Result<()> {
+        let alloc_info = vk::CommandBufferAllocateInfo::default()
+            .command_pool(self.pool)
+            .level(vk::CommandBufferLevel::PRIMARY)
+            .command_buffer_count(1);
+
+        // SAFETY: no VUID violation
+        let cmds = unsafe { self.device.handle.allocate_command_buffers(&alloc_info) }?;
+        self.handle = cmds[0];
+
+        Ok(())
+    }
+
+    fn init_fence(&mut self) -> Result<()> {
+        let fence_info = vk::FenceCreateInfo::default();
+
+        // SAFETY: no VUID violation
+        self.fence =
+            unsafe { self.device.handle.create_fence(&fence_info, None) }.map_err(Error::from)?;
+
+        Ok(())
+    }
+
+    fn destroy(&self) {
+        self.destroy_command_pool();
+        self.destroy_fence();
+    }
+
+    fn destroy_command_pool(&self) {
+        // SAFETY: no VUID violation unless pending_forever is true
+        unsafe {
+            self.device.handle.destroy_command_pool(self.pool, None);
+        }
+    }
+
+    fn destroy_fence(&self) {
+        // SAFETY: no VUID violation unless pending_forever is true
+        unsafe {
+            self.device.handle.destroy_fence(self.fence, None);
+        }
+    }
+
+    fn pending_forever(&self) -> bool {
+        self.pending_forever.load(atomic::Ordering::Relaxed)
+    }
+
+    fn reset_fence(&self) -> Result<()> {
+        // SAFETY: no VUID violation because of how CopyQueue uses this
+        unsafe {
+            self.device
+                .handle
+                .reset_fences(slice::from_ref(&self.fence))
+        }
+        .map_err(Error::from)
+    }
+
+    fn begin(&self) -> Result<()> {
+        let begin_info = vk::CommandBufferBeginInfo::default()
+            .flags(vk::CommandBufferUsageFlags::ONE_TIME_SUBMIT);
+
+        // SAFETY: no VUID violation because of how CopyQueue uses this
+        unsafe {
+            self.device
+                .handle
+                .begin_command_buffer(self.handle, &begin_info)
+        }
+        .map_err(Error::from)
+    }
+
+    fn end(&self) -> Result<()> {
+        // SAFETY: no VUID violation because of how CopyQueue uses this
+        unsafe { self.device.handle.end_command_buffer(self.handle) }.map_err(Error::from)
+    }
+
+    fn wait_fence(&self) -> Result<()> {
+        // SAFETY: no VUID violation because of how CopyQueue uses this
+        unsafe {
+            self.device
+                .handle
+                .wait_for_fences(slice::from_ref(&self.fence), true, u64::MAX)
+        }
+        .map_err(|res| {
+            if res != vk::Result::ERROR_DEVICE_LOST {
+                self.pending_forever.store(true, atomic::Ordering::Relaxed);
+            }
+            Error::from(res)
+        })
+    }
+}
+
+impl Drop for SimpleCommandBuffer {
+    fn drop(&mut self) {
+        self.destroy();
+    }
+}
+
+#[derive(PartialEq)]
+enum PipelineBarrierType {
+    AcquireSrc,
+    AcquireDst,
+    ReleaseSrc,
+    ReleaseDst,
+}
+
+struct PipelineBarrierScope {
+    dependency_flags: vk::DependencyFlags,
+
+    src_queue_family: u32,
+    src_stage_mask: vk::PipelineStageFlags,
+    src_access_mask: vk::AccessFlags,
+    src_image_layout: vk::ImageLayout,
+
+    dst_queue_family: u32,
+    dst_stage_mask: vk::PipelineStageFlags,
+    dst_access_mask: vk::AccessFlags,
+    dst_image_layout: vk::ImageLayout,
+}
+
+pub struct CopyQueue {
+    device: Arc<Device>,
+    handle: Mutex<vk::Queue>,
+
+    per_thread_cmds: Mutex<HashMap<thread::ThreadId, Arc<SimpleCommandBuffer>>>,
+}
+
+impl CopyQueue {
+    pub fn new(device: Arc<Device>) -> Self {
+        let handle = device.get_queue();
+        let queue = Self {
+            device,
+            handle: Mutex::new(handle),
+            per_thread_cmds: Default::default(),
+        };
+
+        queue
+    }
+
+    fn lookup_per_thread_cmd(&self) -> Option<Arc<SimpleCommandBuffer>> {
+        let tid = thread::current().id();
+        let cmds = self.per_thread_cmds.lock().unwrap();
+
+        cmds.get(&tid).map(|cmd| cmd.clone())
+    }
+
+    fn create_per_thread_cmd(&self) -> Result<Arc<SimpleCommandBuffer>> {
+        let cmd = SimpleCommandBuffer::new(self.device.clone())?;
+        let cmd = Arc::new(cmd);
+
+        let tid = thread::current().id();
+        let mut cmds = self.per_thread_cmds.lock().unwrap();
+
+        cmds.insert(tid, cmd.clone());
+
+        Ok(cmd)
+    }
+
+    fn get_per_thread_cmd(&self) -> Result<Arc<SimpleCommandBuffer>> {
+        let cmd = match self.lookup_per_thread_cmd() {
+            Some(cmd) => cmd,
+            None => self.create_per_thread_cmd()?,
+        };
+
+        if cmd.pending_forever() {
+            return Error::device();
+        }
+        cmd.reset_fence()?;
+        cmd.begin()?;
+
+        Ok(cmd)
+    }
+
+    fn submit_cmd(&self, cmd: &SimpleCommandBuffer) -> Result<()> {
+        let submit_info = vk::SubmitInfo::default().command_buffers(slice::from_ref(&cmd.handle));
+        let handle = *self.handle.lock().unwrap();
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device
+                .handle
+                .queue_submit(handle, slice::from_ref(&submit_info), cmd.fence)
+        }
+        .map_err(Error::from)
+    }
+
+    fn execute_per_thread_cmd(&self, cmd: Arc<SimpleCommandBuffer>) -> Result<()> {
+        cmd.end()?;
+        self.submit_cmd(&cmd)?;
+        cmd.wait_fence()
+    }
+
+    fn get_pipeline_barrier_scope(&self, ty: PipelineBarrierType) -> PipelineBarrierScope {
+        // We assume all resources are owned by the foreign queue and, in the case of images, have
+        // been initialized to the GENERAL layout.  Strictly speaking, the layout part is not
+        // guaranteed unless we always explicitly transition the layout and release the ownership
+        // during image creation.
+        let src_queue_family;
+        let src_stage_mask;
+        let src_access_mask;
+        let src_image_layout;
+        let dst_queue_family;
+        let dst_stage_mask;
+        let dst_access_mask;
+        let dst_image_layout;
+        match ty {
+            PipelineBarrierType::AcquireSrc | PipelineBarrierType::AcquireDst => {
+                src_queue_family = vk::QUEUE_FAMILY_FOREIGN_EXT;
+                src_stage_mask = vk::PipelineStageFlags::NONE;
+                src_access_mask = vk::AccessFlags::NONE;
+                src_image_layout = vk::ImageLayout::GENERAL;
+
+                dst_queue_family = self.device.properties().queue_family;
+                dst_stage_mask = vk::PipelineStageFlags::TRANSFER;
+                if ty == PipelineBarrierType::AcquireSrc {
+                    dst_access_mask = vk::AccessFlags::TRANSFER_READ;
+                    dst_image_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
+                } else {
+                    dst_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+                    dst_image_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+                }
+            }
+            PipelineBarrierType::ReleaseSrc | PipelineBarrierType::ReleaseDst => {
+                src_queue_family = self.device.properties().queue_family;
+                if ty == PipelineBarrierType::ReleaseSrc {
+                    src_stage_mask = vk::PipelineStageFlags::NONE;
+                    src_access_mask = vk::AccessFlags::NONE;
+                    src_image_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
+                } else {
+                    src_stage_mask = vk::PipelineStageFlags::TRANSFER;
+                    src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
+                    src_image_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
+                }
+
+                dst_queue_family = vk::QUEUE_FAMILY_FOREIGN_EXT;
+                dst_stage_mask = vk::PipelineStageFlags::NONE;
+                dst_access_mask = vk::AccessFlags::NONE;
+                dst_image_layout = vk::ImageLayout::GENERAL;
+            }
+        }
+
+        PipelineBarrierScope {
+            dependency_flags: vk::DependencyFlags::empty(),
+            src_queue_family,
+            src_stage_mask,
+            src_access_mask,
+            src_image_layout,
+            dst_queue_family,
+            dst_stage_mask,
+            dst_access_mask,
+            dst_image_layout,
+        }
+    }
+
+    fn cmd_buffer_barrier(
+        &self,
+        cmd: vk::CommandBuffer,
+        buf: vk::Buffer,
+        scope: PipelineBarrierScope,
+    ) {
+        let buf_barrier = vk::BufferMemoryBarrier::default()
+            .src_access_mask(scope.src_access_mask)
+            .dst_access_mask(scope.dst_access_mask)
+            .src_queue_family_index(scope.src_queue_family)
+            .dst_queue_family_index(scope.dst_queue_family)
+            .buffer(buf)
+            .size(vk::WHOLE_SIZE);
+
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.cmd_pipeline_barrier(
+                cmd,
+                scope.src_stage_mask,
+                scope.dst_stage_mask,
+                scope.dependency_flags,
+                &[],
+                slice::from_ref(&buf_barrier),
+                &[],
+            );
+        }
+    }
+
+    fn cmd_image_barrier(
+        &self,
+        cmd: vk::CommandBuffer,
+        img: vk::Image,
+        aspect: vk::ImageAspectFlags,
+        scope: PipelineBarrierScope,
+    ) {
+        let img_subres = vk::ImageSubresourceRange::default()
+            .aspect_mask(aspect)
+            .level_count(1)
+            .layer_count(1);
+        let img_barrier = vk::ImageMemoryBarrier::default()
+            .src_access_mask(scope.src_access_mask)
+            .dst_access_mask(scope.dst_access_mask)
+            .old_layout(scope.src_image_layout)
+            .new_layout(scope.dst_image_layout)
+            .src_queue_family_index(scope.src_queue_family)
+            .dst_queue_family_index(scope.dst_queue_family)
+            .image(img)
+            .subresource_range(img_subres);
+
+        // SAFETY: VUID-VkImageMemoryBarrier-oldLayout-01197 violation on first image acquire (see
+        // get_pipeline_barrier_scope)
+        unsafe {
+            self.device.handle.cmd_pipeline_barrier(
+                cmd,
+                scope.src_stage_mask,
+                scope.dst_stage_mask,
+                scope.dependency_flags,
+                &[],
+                &[],
+                slice::from_ref(&img_barrier),
+            );
+        }
+    }
+
+    pub fn copy_buffer(&self, src: &Buffer, dst: &Buffer, region: vk::BufferCopy) -> Result<()> {
+        let cmd = self.get_per_thread_cmd()?;
+
+        let src_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
+        let dst_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
+        let src_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
+        let dst_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
+
+        self.cmd_buffer_barrier(cmd.handle, src.handle, src_acquire);
+        self.cmd_buffer_barrier(cmd.handle, dst.handle, dst_acquire);
+
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.cmd_copy_buffer(
+                cmd.handle,
+                src.handle,
+                dst.handle,
+                slice::from_ref(&region),
+            );
+        }
+
+        self.cmd_buffer_barrier(cmd.handle, src.handle, src_release);
+        self.cmd_buffer_barrier(cmd.handle, dst.handle, dst_release);
+
+        self.execute_per_thread_cmd(cmd)
+    }
+
+    pub fn copy_image_to_buffer(
+        &self,
+        img: &Image,
+        buf: &Buffer,
+        region: vk::BufferImageCopy,
+    ) -> Result<()> {
+        let cmd = self.get_per_thread_cmd()?;
+
+        let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
+        let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
+        let img_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
+        let buf_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
+        let img_aspect = region.image_subresource.aspect_mask;
+        let img_layout = img_acquire.dst_image_layout;
+
+        self.cmd_image_barrier(cmd.handle, img.handle, img_aspect, img_acquire);
+        self.cmd_buffer_barrier(cmd.handle, buf.handle, buf_acquire);
+
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.cmd_copy_image_to_buffer(
+                cmd.handle,
+                img.handle,
+                img_layout,
+                buf.handle,
+                slice::from_ref(&region),
+            );
+        }
+
+        self.cmd_image_barrier(cmd.handle, img.handle, img_aspect, img_release);
+        self.cmd_buffer_barrier(cmd.handle, buf.handle, buf_release);
+
+        self.execute_per_thread_cmd(cmd)
+    }
+
+    pub fn copy_buffer_to_image(
+        &self,
+        buf: &Buffer,
+        img: &Image,
+        region: vk::BufferImageCopy,
+    ) -> Result<()> {
+        let cmd = self.get_per_thread_cmd()?;
+
+        let buf_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireSrc);
+        let img_acquire = self.get_pipeline_barrier_scope(PipelineBarrierType::AcquireDst);
+        let buf_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseSrc);
+        let img_release = self.get_pipeline_barrier_scope(PipelineBarrierType::ReleaseDst);
+        let img_aspect = region.image_subresource.aspect_mask;
+        let img_layout = img_acquire.dst_image_layout;
+
+        self.cmd_buffer_barrier(cmd.handle, buf.handle, buf_acquire);
+        self.cmd_image_barrier(cmd.handle, img.handle, img_aspect, img_acquire);
+
+        // SAFETY: no VUID violation
+        unsafe {
+            self.device.handle.cmd_copy_buffer_to_image(
+                cmd.handle,
+                buf.handle,
+                img.handle,
+                img_layout,
+                slice::from_ref(&region),
+            );
+        }
+
+        self.cmd_buffer_barrier(cmd.handle, buf.handle, buf_release);
+        self.cmd_image_barrier(cmd.handle, img.handle, img_aspect, img_release);
+
+        self.execute_per_thread_cmd(cmd)
     }
 }

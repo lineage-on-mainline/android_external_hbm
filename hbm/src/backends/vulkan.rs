@@ -218,13 +218,14 @@ fn get_image(handle: &Handle) -> &sash::Image {
 /// A Vulkan backend.
 pub struct Backend {
     device: Arc<sash::Device>,
+    copy_queue: sash::CopyQueue,
 }
 
 impl Backend {
     fn new(device_index: Option<usize>, device_id: Option<u64>, debug: bool) -> Result<Self> {
-        let backend = Self {
-            device: sash::Device::build("hbm", device_index, device_id, debug)?,
-        };
+        let device = sash::Device::build("hbm", device_index, device_id, debug)?;
+        let copy_queue = sash::CopyQueue::new(device.clone());
+        let backend = Self { device, copy_queue };
 
         log::info!("vulkan backend initialized");
 
@@ -419,7 +420,12 @@ impl super::Backend for Backend {
 
         let dst = get_buffer(dst);
         let src = get_buffer(src);
-        dst.copy_buffer(src, copy).and(Ok(None))
+        let region = vk::BufferCopy::default()
+            .src_offset(copy.src_offset)
+            .dst_offset(copy.dst_offset)
+            .size(copy.size);
+
+        self.copy_queue.copy_buffer(src, dst, region).and(Ok(None))
     }
 
     fn copy_buffer_image(
@@ -436,11 +442,17 @@ impl super::Backend for Backend {
         if let HandlePayload::Buffer(_) = &dst.payload {
             let dst_buf = get_buffer(dst);
             let src_img = get_image(src);
-            dst_buf.copy_image(src_img, copy)
+            let region = src_img.get_copy_region(copy);
+
+            self.copy_queue
+                .copy_image_to_buffer(src_img, dst_buf, region)
         } else {
             let dst_img = get_image(dst);
             let src_buf = get_buffer(src);
-            dst_img.copy_buffer(src_buf, copy)
+            let region = dst_img.get_copy_region(copy);
+
+            self.copy_queue
+                .copy_buffer_to_image(src_buf, dst_img, region)
         }
         .and(Ok(None))
     }
