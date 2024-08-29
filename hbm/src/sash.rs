@@ -1781,7 +1781,8 @@ struct SimpleCommandBuffer {
     pool: vk::CommandPool,
     handle: vk::CommandBuffer,
     fence: vk::Fence,
-    pending_forever: atomic::AtomicBool,
+    // this is atomic only because rust does not know this is per-thread
+    pending: atomic::AtomicBool,
 }
 
 impl SimpleCommandBuffer {
@@ -1791,7 +1792,7 @@ impl SimpleCommandBuffer {
             pool: Default::default(),
             handle: Default::default(),
             fence: Default::default(),
-            pending_forever: atomic::AtomicBool::new(false),
+            pending: atomic::AtomicBool::new(false),
         };
         cmd.init()?;
 
@@ -1842,22 +1843,35 @@ impl SimpleCommandBuffer {
     }
 
     fn destroy(&self) {
-        // SAFETY: no VUID violation unless pending_forever is true
+        let _ = self.ensure_idle_fence();
+
+        // SAFETY: no VUID violation unless pending is true
         unsafe {
             self.device.handle.destroy_command_pool(self.pool, None);
         }
 
-        // SAFETY: no VUID violation unless pending_forever is true
+        // SAFETY: no VUID violation unless pending is true
         unsafe {
             self.device.handle.destroy_fence(self.fence, None);
         }
     }
 
-    fn pending_forever(&self) -> bool {
-        self.pending_forever.load(atomic::Ordering::Relaxed)
+    fn ensure_idle_fence(&self) -> Result<()> {
+        if self.pending.load(atomic::Ordering::Relaxed) {
+            if self.wait_fence().is_ok() {
+                self.pending.store(false, atomic::Ordering::Relaxed);
+                Ok(())
+            } else {
+                Error::device()
+            }
+        } else {
+            Ok(())
+        }
     }
 
     fn reset_fence(&self) -> Result<()> {
+        self.ensure_idle_fence()?;
+
         // SAFETY: no VUID violation because of how CopyQueue uses this
         unsafe {
             self.device
@@ -1894,7 +1908,7 @@ impl SimpleCommandBuffer {
         }
         .map_err(|res| {
             if res != vk::Result::ERROR_DEVICE_LOST {
-                self.pending_forever.store(true, atomic::Ordering::Relaxed);
+                self.pending.store(true, atomic::Ordering::Relaxed);
             }
             Error::from(res)
         })
@@ -1973,9 +1987,6 @@ impl CopyQueue {
             None => self.create_per_thread_cmd()?,
         };
 
-        if cmd.pending_forever() {
-            return Error::device();
-        }
         cmd.reset_fence()?;
         cmd.begin()?;
 
