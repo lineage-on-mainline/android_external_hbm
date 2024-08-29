@@ -3,7 +3,7 @@ members = ["hbm", "hbm-minigbm", "hbm-gralloc"]
 resolver = "2"
 
 [workspace.package]
-version = "0.1.5"
+version = "0.1.6"
 authors = ["Chia-I Wu"]
 edition = "2021"
 repository = "https://gitlab.freedesktop.org/olv/hbm"
@@ -18,7 +18,7 @@ cbindgen = "0.24"
 drm = "0.12"
 drm-fourcc = "2"
 env_logger = "0.9"
-hbm = { version = "0.1.5", default-features = false, features = ["ash"], path = "hbm" }
+hbm = { version = "0.1.6", default-features = false, features = ["ash"], path = "hbm" }
 libc = "0.2"
 log = "0.4"
 nix = { version = "0.28", features = ["fs", "ioctl", "mman", "poll"] }
