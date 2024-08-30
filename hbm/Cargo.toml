@@ -4,6 +4,7 @@ description = "A hardware buffer allocator"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords.workspace = true

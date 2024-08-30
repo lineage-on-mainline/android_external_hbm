@@ -6,6 +6,7 @@ resolver = "2"
 version = "0.1.6"
 authors = ["Chia-I Wu"]
 edition = "2021"
+rust-version = "1.76"
 repository = "https://gitlab.freedesktop.org/olv/hbm"
 license = "MIT"
 keywords = ["graphics", "gbm", "minigbm", "gralloc"]
