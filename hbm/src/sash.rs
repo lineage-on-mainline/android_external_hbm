@@ -2027,7 +2027,7 @@ impl CopyQueue {
         match ty {
             PipelineBarrierType::AcquireSrc | PipelineBarrierType::AcquireDst => {
                 src_queue_family = vk::QUEUE_FAMILY_FOREIGN_EXT;
-                src_stage_mask = vk::PipelineStageFlags::NONE;
+                src_stage_mask = vk::PipelineStageFlags::ALL_COMMANDS;
                 src_access_mask = vk::AccessFlags::NONE;
                 src_image_layout = vk::ImageLayout::GENERAL;
 
@@ -2043,18 +2043,17 @@ impl CopyQueue {
             }
             PipelineBarrierType::ReleaseSrc | PipelineBarrierType::ReleaseDst => {
                 src_queue_family = self.device.properties().queue_family;
+                src_stage_mask = vk::PipelineStageFlags::TRANSFER;
                 if ty == PipelineBarrierType::ReleaseSrc {
-                    src_stage_mask = vk::PipelineStageFlags::NONE;
                     src_access_mask = vk::AccessFlags::NONE;
                     src_image_layout = vk::ImageLayout::TRANSFER_SRC_OPTIMAL;
                 } else {
-                    src_stage_mask = vk::PipelineStageFlags::TRANSFER;
                     src_access_mask = vk::AccessFlags::TRANSFER_WRITE;
                     src_image_layout = vk::ImageLayout::TRANSFER_DST_OPTIMAL;
                 }
 
                 dst_queue_family = vk::QUEUE_FAMILY_FOREIGN_EXT;
-                dst_stage_mask = vk::PipelineStageFlags::NONE;
+                dst_stage_mask = vk::PipelineStageFlags::ALL_COMMANDS;
                 dst_access_mask = vk::AccessFlags::NONE;
                 dst_image_layout = vk::ImageLayout::GENERAL;
             }
