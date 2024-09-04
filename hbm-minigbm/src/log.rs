@@ -92,7 +92,7 @@ pub trait LogError {
         D: fmt::Display;
 }
 
-impl<T> LogError for Result<T, hbm::Error> {
+impl<T> LogError for hbm::Result<T> {
     fn log_err<D>(self, act: D) -> Self
     where
         D: fmt::Display,

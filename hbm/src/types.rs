@@ -86,7 +86,7 @@ impl From<ash::vk::Result> for Error {
 }
 
 /// A specialized `Result` type for HBM operations.
-pub(crate) type Result<T> = result::Result<T, Error>;
+pub type Result<T> = result::Result<T, Error>;
 
 /// The type for the BO size.
 pub type Size = u64;
