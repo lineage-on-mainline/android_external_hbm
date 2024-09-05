@@ -104,3 +104,36 @@ impl<T> LogError for hbm::Result<T> {
         self
     }
 }
+
+#[test]
+fn test_level_enabled() {
+    use std::sync::Arc;
+    let cb_call_count = Arc::new(Mutex::new(0));
+
+    let captured_count = cb_call_count.clone();
+    let cb = Box::new(move |rec: &Record| {
+        let mut count = captured_count.lock().unwrap();
+        *count += 1;
+        println!("{}", rec.args());
+    });
+    enable(LevelFilter::Off, cb);
+
+    log::error!("This shouldn't reach anybody");
+    assert!(*cb_call_count.lock().unwrap() == 0);
+
+    log::set_max_level(LevelFilter::Info);
+    log::info!("This should be heard");
+    assert!(*cb_call_count.lock().unwrap() == 1);
+
+    log::set_max_level(LevelFilter::Warn);
+    log::info!("This shouldn't be heard");
+    assert!(*cb_call_count.lock().unwrap() == 1);
+
+    log::set_max_level(LevelFilter::Debug);
+    log::info!("But this should");
+    assert!(*cb_call_count.lock().unwrap() == 2);
+
+    disable();
+    log::error!("obviously this shouldn't be heard");
+    assert!(*cb_call_count.lock().unwrap() == 2);
+}
