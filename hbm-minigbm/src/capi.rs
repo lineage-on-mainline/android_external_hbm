@@ -198,7 +198,7 @@ mod c {
     use super::*;
     use std::os::fd::{BorrowedFd, FromRawFd, IntoRawFd, OwnedFd, RawFd};
 
-    pub fn log_lv_max(log_lv_max: hbm_log_level) -> log::LevelFilter {
+    pub fn log_level_from(log_lv_max: hbm_log_level) -> log::LevelFilter {
         match log_lv_max {
             hbm_log_level::Off => log::LevelFilter::Off,
             hbm_log_level::Error => log::LevelFilter::Error,
@@ -208,7 +208,7 @@ mod c {
         }
     }
 
-    pub fn log_lv_ret(log_lv: log::Level) -> hbm_log_level {
+    pub fn log_level_into(log_lv: log::Level) -> hbm_log_level {
         match log_lv {
             log::Level::Error => hbm_log_level::Error,
             log::Level::Warn => hbm_log_level::Warn,
@@ -238,7 +238,7 @@ mod c {
         unsafe { *desc }
     }
 
-    pub fn flags(c_flags: u32) -> hbm::Flags {
+    pub fn flags_from(c_flags: u32) -> hbm::Flags {
         let mut flags = hbm::Flags::empty();
         if (c_flags & HBM_FLAG_EXTERNAL) > 0 {
             flags |= hbm::Flags::EXTERNAL;
@@ -259,7 +259,7 @@ mod c {
         flags
     }
 
-    pub fn usage(c_usage: u64) -> hbm::vulkan::Usage {
+    pub fn usage_from(c_usage: u64) -> hbm::vulkan::Usage {
         let mut vk_usage = hbm::vulkan::Usage::empty();
         if (c_usage & HBM_USAGE_GPU_TRANSFER) > 0 {
             vk_usage |= hbm::vulkan::Usage::TRANSFER;
@@ -283,7 +283,7 @@ mod c {
         vk_usage
     }
 
-    pub fn mod_out(out_mods: *mut u64, mod_max: u32, mods: &[hbm::Modifier]) -> u32 {
+    pub fn mod_copy_out(out_mods: *mut u64, mod_max: u32, mods: &[hbm::Modifier]) -> u32 {
         let mut mod_count = mods.len() as u32;
         if mod_max == 0 {
             return mod_count;
@@ -303,7 +303,7 @@ mod c {
         mod_count
     }
 
-    pub fn extent(extent: *const hbm_extent, fmt: u32) -> hbm::Extent {
+    pub fn extent_from(extent: *const hbm_extent, fmt: u32) -> hbm::Extent {
         // SAFETY: extent is valid
         let extent = unsafe { &*extent };
 
@@ -319,7 +319,7 @@ mod c {
         }
     }
 
-    pub fn con_optional(con: *const hbm_constraint) -> Option<hbm::Constraint> {
+    pub fn con_optional_from(con: *const hbm_constraint) -> Option<hbm::Constraint> {
         if con.is_null() {
             return None;
         }
@@ -341,7 +341,7 @@ mod c {
         Some(con)
     }
 
-    pub fn layout(layout: *const hbm_layout) -> hbm::Layout {
+    pub fn layout_from(layout: *const hbm_layout) -> hbm::Layout {
         // SAFETY: layout is valid
         let layout = unsafe { &*layout };
 
@@ -353,7 +353,7 @@ mod c {
             .strides(layout.strides)
     }
 
-    pub fn layout_out(out_layout: *mut hbm_layout, layout: hbm::Layout) {
+    pub fn layout_copy_out(out_layout: *mut hbm_layout, layout: hbm::Layout) {
         // SAFETY: out_layout is non-NULL
         let out_layout = unsafe { &mut *out_layout };
 
@@ -386,7 +386,7 @@ mod c {
         unsafe { &mut *(bo as *mut hbm::Bo) }
     }
 
-    pub fn mt(c_mt: u32) -> hbm::MemoryType {
+    pub fn mt_from(c_mt: u32) -> hbm::MemoryType {
         let mut mt = hbm::MemoryType::empty();
         if (c_mt & HBM_MEMORY_TYPE_LOCAL) > 0 {
             mt |= hbm::MemoryType::LOCAL;
@@ -404,7 +404,7 @@ mod c {
         mt
     }
 
-    pub fn mt_ret(mt: hbm::MemoryType) -> u32 {
+    pub fn mt_into(mt: hbm::MemoryType) -> u32 {
         let mut c_mt = 0;
         if mt.contains(hbm::MemoryType::LOCAL) {
             c_mt |= HBM_MEMORY_TYPE_LOCAL;
@@ -422,7 +422,7 @@ mod c {
         c_mt
     }
 
-    pub fn mt_out(out_mts: *mut u32, mt_max: u32, mts: Vec<hbm::MemoryType>) -> u32 {
+    pub fn mt_copy_out(out_mts: *mut u32, mt_max: u32, mts: Vec<hbm::MemoryType>) -> u32 {
         let mut mt_count = mts.len() as u32;
         if mt_max == 0 {
             return mt_count;
@@ -436,7 +436,7 @@ mod c {
         let out_mts = unsafe { slice::from_raw_parts_mut(out_mts, mt_count as usize) };
 
         for (dst, src) in out_mts.iter_mut().zip(mts.into_iter()) {
-            *dst = mt_ret(src);
+            *dst = mt_into(src);
         }
 
         mt_count
@@ -452,7 +452,7 @@ mod c {
         Some(fd)
     }
 
-    pub fn fd_optional(fd: RawFd) -> Option<OwnedFd> {
+    pub fn fd_optional_from(fd: RawFd) -> Option<OwnedFd> {
         if fd < 0 {
             return None;
         }
@@ -462,11 +462,11 @@ mod c {
         Some(fd)
     }
 
-    pub fn fd_ret(fd: OwnedFd) -> RawFd {
+    pub fn fd_into(fd: OwnedFd) -> RawFd {
         fd.into_raw_fd()
     }
 
-    pub fn fd_out(out_fd: *mut RawFd, fd: Option<OwnedFd>) {
+    pub fn fd_copy_out(out_fd: *mut RawFd, fd: Option<OwnedFd>) {
         if out_fd.is_null() {
             assert!(fd.is_none());
             return;
@@ -477,7 +477,7 @@ mod c {
         *out_fd = fd.map_or(-1, |fd| fd.into_raw_fd());
     }
 
-    pub fn str_optional<'a>(s: *const ffi::c_char) -> Option<&'a str> {
+    pub fn str_optional_from<'a>(s: *const ffi::c_char) -> Option<&'a str> {
         if s.is_null() {
             return None;
         }
@@ -488,7 +488,7 @@ mod c {
         s.to_str().ok()
     }
 
-    pub fn buf_copy(copy: *const hbm_copy_buffer) -> hbm::CopyBuffer {
+    pub fn copybuffer_from(copy: *const hbm_copy_buffer) -> hbm::CopyBuffer {
         // SAFETY: copy is valid
         let copy = unsafe { &*copy };
 
@@ -499,7 +499,7 @@ mod c {
         }
     }
 
-    pub fn img_copy(copy: *const hbm_copy_buffer_image) -> hbm::CopyBufferImage {
+    pub fn copybufferimage_from(copy: *const hbm_copy_buffer_image) -> hbm::CopyBufferImage {
         // SAFETY: copy is valid
         let copy = unsafe { &*copy };
 
@@ -526,7 +526,7 @@ pub unsafe extern "C" fn hbm_log_init(
     log_cb: hbm_log_callback,
     cb_data: *mut ffi::c_void,
 ) {
-    let log_lv_max = c::log_lv_max(log_lv_max);
+    let log_lv_max = c::log_level_from(log_lv_max);
     if log_lv_max == log::LevelFilter::Off || log_cb.is_none() {
         super::log::disable();
         return;
@@ -535,7 +535,7 @@ pub unsafe extern "C" fn hbm_log_init(
     let log_cb = log_cb.unwrap();
     let cb_data = cb_data as usize;
     let cb = move |rec: &log::Record| {
-        let log_lv = c::log_lv_ret(rec.level());
+        let log_lv = c::log_level_into(rec.level());
         let msg = format!("{}", rec.args());
 
         let _ = ffi::CString::new(msg).inspect(|cstr|
@@ -557,9 +557,9 @@ struct CDevice {
 
 impl CDevice {
     fn classify(&self, desc: &hbm_description) -> Result<hbm::Class, hbm::Error> {
-        let usage = hbm::Usage::Vulkan(c::usage(desc.usage));
+        let usage = hbm::Usage::Vulkan(c::usage_from(desc.usage));
         let desc = hbm::Description::new()
-            .flags(c::flags(desc.flags))
+            .flags(c::flags_from(desc.flags))
             .format(hbm::Format(desc.format))
             .modifier(hbm::Modifier(desc.modifier));
 
@@ -671,7 +671,7 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     };
 
     let mods = dev.device.modifiers(&class);
-    c::mod_out(out_mods, mod_max, mods)
+    c::mod_copy_out(out_mods, mod_max, mods)
 }
 
 /// Queries modifier support for a BO description.
@@ -711,8 +711,8 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
 ) -> *mut hbm_bo {
     let dev = c::dev_borrow(dev);
     let desc = c::desc_from(desc);
-    let extent = c::extent(extent, desc.format);
-    let con = c::con_optional(con);
+    let extent = c::extent_from(extent, desc.format);
+    let con = c::con_optional_from(con);
 
     let Ok(class) = dev.get_class(desc).log_err("get bo class") else {
         return ptr::null_mut();
@@ -747,8 +747,8 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
 ) -> *mut hbm_bo {
     let dev = c::dev_borrow(dev);
     let desc = c::desc_from(desc);
-    let extent = c::extent(extent, desc.format);
-    let layout = c::layout(layout);
+    let extent = c::extent_from(extent, desc.format);
+    let layout = c::layout_from(layout);
     let dmabuf = c::fd_borrow(dmabuf);
 
     let Ok(class) = dev.get_class(desc).log_err("get explicit bo class") else {
@@ -786,7 +786,7 @@ pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_lay
     let bo = c::bo_borrow(bo);
 
     let layout = bo.layout();
-    c::layout_out(out_layout, layout);
+    c::layout_copy_out(out_layout, layout);
 }
 
 /// Queries supported memory types of a BO.
@@ -808,7 +808,7 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
     let bo = c::bo_borrow(bo);
 
     let mts = bo.memory_types();
-    c::mt_out(out_mts, mt_max, mts)
+    c::mt_copy_out(out_mts, mt_max, mts)
 }
 
 /// Bind a memory to a BO.
@@ -824,8 +824,8 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i32) -> bool {
     let bo = c::bo_borrow_mut(bo);
-    let mt = c::mt(mt);
-    let dmabuf = c::fd_optional(dmabuf);
+    let mt = c::mt_from(mt);
+    let dmabuf = c::fd_optional_from(dmabuf);
 
     let act = if dmabuf.is_some() {
         "import memory"
@@ -848,13 +848,13 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i3
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
     let bo = c::bo_borrow(bo);
-    let name = c::str_optional(name);
+    let name = c::str_optional_from(name);
 
     let Ok(dmabuf) = bo.export_dma_buf(name).log_err("export") else {
         return -1;
     };
 
-    c::fd_ret(dmabuf)
+    c::fd_into(dmabuf)
 }
 
 /// Map a BO for direct CPU access.
@@ -939,13 +939,13 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
 ) -> bool {
     let bo = c::bo_borrow(bo);
     let src = c::bo_borrow(src);
-    let copy = c::buf_copy(copy);
-    let in_sync_fd = c::fd_optional(in_sync_fd);
+    let copy = c::copybuffer_from(copy);
+    let in_sync_fd = c::fd_optional_from(in_sync_fd);
 
     let wait = out_sync_fd.is_null();
     bo.copy_buffer(src, copy, in_sync_fd, wait)
         .log_err("copy buffer")
-        .map(|sync_fd| c::fd_out(out_sync_fd, sync_fd))
+        .map(|sync_fd| c::fd_copy_out(out_sync_fd, sync_fd))
         .is_ok()
 }
 
@@ -971,12 +971,12 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
 ) -> bool {
     let bo = c::bo_borrow(bo);
     let src = c::bo_borrow(src);
-    let copy = c::img_copy(copy);
-    let in_sync_fd = c::fd_optional(in_sync_fd);
+    let copy = c::copybufferimage_from(copy);
+    let in_sync_fd = c::fd_optional_from(in_sync_fd);
 
     let wait = out_sync_fd.is_null();
     bo.copy_buffer_image(src, copy, in_sync_fd, wait)
         .log_err("copy image")
-        .map(|sync_fd| c::fd_out(out_sync_fd, sync_fd))
+        .map(|sync_fd| c::fd_copy_out(out_sync_fd, sync_fd))
         .is_ok()
 }
