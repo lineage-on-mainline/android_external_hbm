@@ -687,10 +687,17 @@ mod tests {
 
     #[test]
     fn test_description() {
+        // at least one of EXTERNAL, MAP, or COPY should be set
         let mut desc = Description::new();
-        assert!(desc.is_valid());
+        assert!(!desc.is_valid());
+        for flag in [Flags::EXTERNAL, Flags::MAP, Flags::COPY] {
+            desc = desc.flags(flag);
+            assert!(desc.is_valid());
+        }
+
         assert!(desc.is_buffer());
 
+        // buffer cannot have a modifier
         desc = desc.modifier(formats::MOD_LINEAR);
         assert!(!desc.is_valid());
 
