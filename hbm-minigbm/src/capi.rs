@@ -228,12 +228,12 @@ mod c {
         unsafe { Box::from_raw(dev as *mut CDevice) }
     }
 
-    pub fn dev<'a>(dev: *mut hbm_device) -> &'a mut CDevice {
+    pub fn dev_borrow<'a>(dev: *mut hbm_device) -> &'a mut CDevice {
         // SAFETY: dev was created by dev_ret
         unsafe { &mut *(dev as *mut CDevice) }
     }
 
-    pub fn desc(desc: *const hbm_description) -> hbm_description {
+    pub fn desc_from(desc: *const hbm_description) -> hbm_description {
         // SAFETY: desc is valid
         unsafe { *desc }
     }
@@ -376,12 +376,12 @@ mod c {
         unsafe { Box::from_raw(bo as *mut hbm::Bo) }
     }
 
-    pub fn bo<'a>(bo: *mut hbm_bo) -> &'a hbm::Bo {
+    pub fn bo_borrow<'a>(bo: *mut hbm_bo) -> &'a hbm::Bo {
         // SAFETY: bo was created by bo_ret
         unsafe { &*(bo as *const hbm::Bo) }
     }
 
-    pub fn bo_mut<'a>(bo: *mut hbm_bo) -> &'a mut hbm::Bo {
+    pub fn bo_borrow_mut<'a>(bo: *mut hbm_bo) -> &'a mut hbm::Bo {
         // SAFETY: bo was created by bo_ret
         unsafe { &mut *(bo as *mut hbm::Bo) }
     }
@@ -636,7 +636,7 @@ pub unsafe extern "C" fn hbm_device_get_plane_count(
     fmt: u32,
     modifier: u64,
 ) -> u32 {
-    let dev = c::dev(dev);
+    let dev = c::dev_borrow(dev);
 
     dev.device
         .memory_plane_count(hbm::Format(fmt), hbm::Modifier(modifier))
@@ -663,8 +663,8 @@ pub unsafe extern "C" fn hbm_device_get_modifiers(
     mod_max: u32,
     out_mods: *mut u64,
 ) -> u32 {
-    let dev = c::dev(dev);
-    let desc = c::desc(desc);
+    let dev = c::dev_borrow(dev);
+    let desc = c::desc_from(desc);
 
     let Ok(class) = dev.get_class(desc) else {
         return 0;
@@ -685,8 +685,8 @@ pub unsafe extern "C" fn hbm_device_has_modifier(
     desc: *const hbm_description,
     modifier: u64,
 ) -> bool {
-    let dev = c::dev(dev);
-    let desc = c::desc(desc);
+    let dev = c::dev_borrow(dev);
+    let desc = c::desc_from(desc);
 
     let Ok(class) = dev.get_class(desc) else {
         return false;
@@ -709,8 +709,8 @@ pub unsafe extern "C" fn hbm_bo_create_with_constraint(
     extent: *const hbm_extent,
     con: *const hbm_constraint,
 ) -> *mut hbm_bo {
-    let dev = c::dev(dev);
-    let desc = c::desc(desc);
+    let dev = c::dev_borrow(dev);
+    let desc = c::desc_from(desc);
     let extent = c::extent(extent, desc.format);
     let con = c::con_optional(con);
 
@@ -745,8 +745,8 @@ pub unsafe extern "C" fn hbm_bo_create_with_layout(
     layout: *const hbm_layout,
     dmabuf: i32,
 ) -> *mut hbm_bo {
-    let dev = c::dev(dev);
-    let desc = c::desc(desc);
+    let dev = c::dev_borrow(dev);
+    let desc = c::desc_from(desc);
     let extent = c::extent(extent, desc.format);
     let layout = c::layout(layout);
     let dmabuf = c::fd_borrow(dmabuf);
@@ -783,7 +783,7 @@ pub unsafe extern "C" fn hbm_bo_destroy(bo: *mut hbm_bo) {
 /// `out_layout` must be non-NULL.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_layout(bo: *mut hbm_bo, out_layout: *mut hbm_layout) {
-    let bo = c::bo(bo);
+    let bo = c::bo_borrow(bo);
 
     let layout = bo.layout();
     c::layout_out(out_layout, layout);
@@ -805,7 +805,7 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
     mt_max: u32,
     out_mts: *mut u32,
 ) -> u32 {
-    let bo = c::bo(bo);
+    let bo = c::bo_borrow(bo);
 
     let mts = bo.memory_types();
     c::mt_out(out_mts, mt_max, mts)
@@ -823,7 +823,7 @@ pub unsafe extern "C" fn hbm_bo_memory_types(
 /// If `dmabuf` is non-negative, it must be a valid dma-buf.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i32) -> bool {
-    let bo = c::bo_mut(bo);
+    let bo = c::bo_borrow_mut(bo);
     let mt = c::mt(mt);
     let dmabuf = c::fd_optional(dmabuf);
 
@@ -847,7 +847,7 @@ pub unsafe extern "C" fn hbm_bo_bind_memory(bo: *mut hbm_bo, mt: u32, dmabuf: i3
 /// If `name` is non-NULL, it must be a valid C-string.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi::c_char) -> i32 {
-    let bo = c::bo(bo);
+    let bo = c::bo_borrow(bo);
     let name = c::str_optional(name);
 
     let Ok(dmabuf) = bo.export_dma_buf(name).log_err("export") else {
@@ -866,7 +866,7 @@ pub unsafe extern "C" fn hbm_bo_export_dma_buf(bo: *mut hbm_bo, name: *const ffi
 /// `bo` must be valid.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_map(bo: *mut hbm_bo) -> *mut ffi::c_void {
-    let bo = c::bo_mut(bo);
+    let bo = c::bo_borrow_mut(bo);
 
     let Ok(mapping) = bo.map().log_err("map") else {
         return ptr::null_mut();
@@ -882,7 +882,7 @@ pub unsafe extern "C" fn hbm_bo_map(bo: *mut hbm_bo) -> *mut ffi::c_void {
 /// `bo` must be valid.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_unmap(bo: *mut hbm_bo) {
-    let bo = c::bo_mut(bo);
+    let bo = c::bo_borrow_mut(bo);
 
     bo.unmap();
 }
@@ -894,7 +894,7 @@ pub unsafe extern "C" fn hbm_bo_unmap(bo: *mut hbm_bo) {
 /// `bo` must be valid.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_flush(bo: *mut hbm_bo) {
-    let bo = c::bo(bo);
+    let bo = c::bo_borrow(bo);
 
     bo.flush();
 }
@@ -906,7 +906,7 @@ pub unsafe extern "C" fn hbm_bo_flush(bo: *mut hbm_bo) {
 /// `bo` must be valid.
 #[no_mangle]
 pub unsafe extern "C" fn hbm_bo_invalidate(bo: *mut hbm_bo) {
-    let bo = c::bo(bo);
+    let bo = c::bo_borrow(bo);
 
     bo.invalidate();
 }
@@ -937,8 +937,8 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer(
     in_sync_fd: i32,
     out_sync_fd: *mut i32,
 ) -> bool {
-    let bo = c::bo(bo);
-    let src = c::bo(src);
+    let bo = c::bo_borrow(bo);
+    let src = c::bo_borrow(src);
     let copy = c::buf_copy(copy);
     let in_sync_fd = c::fd_optional(in_sync_fd);
 
@@ -969,8 +969,8 @@ pub unsafe extern "C" fn hbm_bo_copy_buffer_image(
     in_sync_fd: i32,
     out_sync_fd: *mut i32,
 ) -> bool {
-    let bo = c::bo(bo);
-    let src = c::bo(src);
+    let bo = c::bo_borrow(bo);
+    let src = c::bo_borrow(src);
     let copy = c::img_copy(copy);
     let in_sync_fd = c::fd_optional(in_sync_fd);
 
