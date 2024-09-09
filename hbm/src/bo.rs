@@ -50,12 +50,8 @@ fn merge_class_to_constraint(con: Option<Constraint>, class: &Class) -> Result<O
     }
 
     if !con.modifiers.is_empty() {
-        con.modifiers = con
-            .modifiers
-            .iter()
-            .filter(|m1| class.modifiers.iter().any(|m2| *m1 == m2))
-            .copied()
-            .collect();
+        con.modifiers
+            .retain(|m1| class.modifiers.iter().any(|m2| m1 == m2));
         if con.modifiers.is_empty() {
             return Error::unsupported();
         }

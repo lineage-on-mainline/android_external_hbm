@@ -1835,8 +1835,8 @@ impl SimpleCommandBuffer {
     fn init_fence(&mut self) -> Result<()> {
         let fence_info = vk::FenceCreateInfo::default();
 
-        // SAFETY: no VUID violation
         self.fence =
+            // SAFETY: no VUID violation
             unsafe { self.device.handle.create_fence(&fence_info, None) }.map_err(Error::from)?;
 
         Ok(())
@@ -1953,20 +1953,18 @@ pub struct CopyQueue {
 impl CopyQueue {
     pub fn new(device: Arc<Device>) -> Self {
         let handle = device.get_queue();
-        let queue = Self {
+        Self {
             device,
             handle: Mutex::new(handle),
             per_thread_cmds: Default::default(),
-        };
-
-        queue
+        }
     }
 
     fn lookup_per_thread_cmd(&self) -> Option<Arc<SimpleCommandBuffer>> {
         let tid = thread::current().id();
         let cmds = self.per_thread_cmds.lock().unwrap();
 
-        cmds.get(&tid).map(|cmd| cmd.clone())
+        cmds.get(&tid).cloned()
     }
 
     fn create_per_thread_cmd(&self) -> Result<Arc<SimpleCommandBuffer>> {
