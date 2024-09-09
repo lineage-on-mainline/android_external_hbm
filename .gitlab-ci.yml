@@ -1,0 +1,59 @@
+# Copyright 2024 Google LLC
+# SPDX-License-Identifier: MIT
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == 'merge_request_event'
+
+variables:
+  # this should match rust-version in Cargo.toml and should not exceed what
+  # android/cros provides
+  #
+  #  - https://android.googlesource.com/platform/prebuilts/rust/+/refs/heads/main/linux-x86/
+  #  - https://chromium.googlesource.com/chromiumos/overlays/chromiumos-overlay/+/refs/heads/main/dev-lang/rust/
+  RUST_VERSION: 1.76
+
+default:
+  image: "rust:$RUST_VERSION"
+  before_script:
+    - rustc --version
+    - cargo --version
+
+stages:
+  - lint
+  - build
+  - test
+
+lint:cargo-fmt:
+  stage: lint
+  script:
+    - rustup component add rustfmt
+    - cargo fmt --all --check
+
+lint:cargo-clippy:
+  stage: lint
+  script:
+    - rustup component add clippy
+    - cargo clippy --workspace --all-targets -- --deny warnings
+
+build:cargo-build:
+  stage: build
+  script:
+    - cargo build --workspace --all-targets
+
+build:minigbm-examples:
+  stage: build
+  variables:
+    OUT: target/debug
+  script:
+    - apt update -y
+    - apt install -y libdrm-dev
+    - cargo install cbindgen
+    - cargo build --package hbm-minigbm
+    - cbindgen -o $OUT/hbm_minigbm.h hbm-minigbm
+    - gcc -o $OUT/test hbm-minigbm/examples/test.c -Wall -Werror $(pkg-config --cflags libdrm) -I$OUT -L$OUT -lhbm_minigbm
+
+test:cargo-test:
+  stage: test
+  script:
+    - cargo test --workspace --all-targets
