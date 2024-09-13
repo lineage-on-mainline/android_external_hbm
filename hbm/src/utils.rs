@@ -41,16 +41,13 @@ pub fn mmap(fd: impl AsFd, size: Size, access: Access) -> Result<Mapping> {
     let ptr =
         // SAFETY: clients assume the responsibility
         unsafe { sys::mman::mmap(None, len, prot, flags, fd, 0) }?;
-    let mapping = Mapping { ptr, len };
 
-    Ok(mapping)
+    Ok(Mapping { ptr, len })
 }
 
 pub fn munmap(mapping: Mapping) -> Result<()> {
     // SAFETY: ptr and len are from sys::mman::mmap
-    unsafe { sys::mman::munmap(mapping.ptr, mapping.len.into()) }?;
-
-    Ok(())
+    unsafe { sys::mman::munmap(mapping.ptr, mapping.len.into()) }.map_err(Error::from)
 }
 
 pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
