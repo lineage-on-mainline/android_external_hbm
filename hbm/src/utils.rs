@@ -77,8 +77,8 @@ pub fn poll(fd: impl AsFd, access: Access) -> Result<()> {
 }
 
 pub fn memfd_create(name: &str, size: Size) -> Result<OwnedFd> {
-    let create_flags =
-        sys::memfd::MemFdCreateFlag::MFD_CLOEXEC | sys::memfd::MemFdCreateFlag::MFD_ALLOW_SEALING;
+    use sys::memfd::MemFdCreateFlag;
+    let create_flags = MemFdCreateFlag::MFD_CLOEXEC | MemFdCreateFlag::MFD_ALLOW_SEALING;
     let seal_flags = fcntl::SealFlag::F_SEAL_SHRINK
         | fcntl::SealFlag::F_SEAL_GROW
         | fcntl::SealFlag::F_SEAL_SEAL;
