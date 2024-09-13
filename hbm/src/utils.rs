@@ -406,18 +406,13 @@ mod drm {
     }
 
     pub fn drm_scan_primary() -> Result<impl Iterator<Item = PathBuf>> {
-        let dir_iter = fs::read_dir(DRM_DIR_NAME)?;
-        let primary_iter = dir_iter.filter_map(|entry| {
+        let primary_iter = fs::read_dir(DRM_DIR_NAME)?.filter_map(|entry| {
             if let Ok(entry) = entry {
-                if entry
+                entry
                     .file_name()
                     .to_str()
                     .is_some_and(|s| s.starts_with(DRM_PRIMARY_MINOR_NAME))
-                {
-                    Some(entry.path())
-                } else {
-                    None
-                }
+                    .then_some(entry.path())
             } else {
                 None
             }
