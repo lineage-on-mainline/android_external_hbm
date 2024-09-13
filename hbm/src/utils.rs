@@ -62,7 +62,7 @@ pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
                 // ret should always be positive because we don't have a timeout
                 if ret > 0 {
                     let revents = poll_fd.revents().unwrap_or(poll::PollFlags::POLLNVAL);
-                    if !(revents & !events).is_empty() {
+                    if revents.intersects(events.complement()) {
                         return Error::errno(nix::Error::EINVAL);
                     }
                 }
