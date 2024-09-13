@@ -50,7 +50,7 @@ pub fn munmap(mapping: Mapping) -> Result<()> {
     unsafe { sys::mman::munmap(mapping.ptr, mapping.len.into()) }.map_err(Error::from)
 }
 
-pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
+pub fn poll(fd: impl AsFd, access: Access) -> Result<()> {
     let timeout = poll::PollTimeout::NONE;
 
     let events = access.into();
@@ -60,14 +60,13 @@ pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
         match poll::poll(slice::from_mut(&mut poll_fd), timeout) {
             Ok(ret) => {
                 // ret should always be positive because we don't have a timeout
-                if ret > 0 {
-                    let revents = poll_fd.revents().unwrap_or(poll::PollFlags::POLLNVAL);
-                    if revents.intersects(events.complement()) {
-                        return Error::errno(nix::Error::EINVAL);
-                    }
+                assert!(ret > 0);
+                let revents = poll_fd.revents().unwrap_or(poll::PollFlags::POLLNVAL);
+                if revents.intersects(events.complement()) {
+                    return Error::errno(nix::Error::EINVAL);
                 }
 
-                return Ok(ret > 0);
+                return Ok(());
             }
             Err(err) => {
                 if err == nix::Error::EINTR || err == nix::Error::EAGAIN {
