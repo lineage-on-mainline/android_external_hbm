@@ -6,6 +6,8 @@
 //! This module defines simple HBM-specific types.
 
 use super::formats;
+use nix::poll::PollFlags;
+use nix::sys::mman::ProtFlags;
 use std::{ffi, fmt, io, num, ptr, result};
 
 /// The error type for HBM operations.
@@ -161,6 +163,26 @@ pub(crate) enum Access {
     #[allow(dead_code)]
     Write,
     ReadWrite,
+}
+
+impl From<Access> for ProtFlags {
+    fn from(access: Access) -> Self {
+        match access {
+            Access::Read => ProtFlags::PROT_READ,
+            Access::Write => ProtFlags::PROT_WRITE,
+            Access::ReadWrite => ProtFlags::PROT_READ | ProtFlags::PROT_WRITE,
+        }
+    }
+}
+
+impl From<Access> for PollFlags {
+    fn from(access: Access) -> Self {
+        match access {
+            Access::Read => PollFlags::POLLIN,
+            Access::Write => PollFlags::POLLOUT,
+            Access::ReadWrite => PollFlags::POLLIN | PollFlags::POLLOUT,
+        }
+    }
 }
 
 /// A memory mapping.

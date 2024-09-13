@@ -34,11 +34,7 @@ pub fn seek_end(fd: impl AsFd) -> Result<Size> {
 }
 
 pub fn mmap(fd: impl AsFd, size: Size, access: Access) -> Result<Mapping> {
-    let prot = match access {
-        Access::Read => sys::mman::ProtFlags::PROT_READ,
-        Access::Write => sys::mman::ProtFlags::PROT_WRITE,
-        Access::ReadWrite => sys::mman::ProtFlags::PROT_READ | sys::mman::ProtFlags::PROT_WRITE,
-    };
+    let prot = access.into();
     let flags = sys::mman::MapFlags::MAP_SHARED;
 
     let len = num::NonZeroUsize::try_from(usize::try_from(size)?)?;
@@ -60,12 +56,7 @@ pub fn munmap(mapping: Mapping) -> Result<()> {
 pub fn poll(fd: impl AsFd, access: Access) -> Result<bool> {
     let timeout = poll::PollTimeout::NONE;
 
-    let events = match access {
-        Access::Read => poll::PollFlags::POLLIN,
-        Access::Write => poll::PollFlags::POLLOUT,
-        Access::ReadWrite => poll::PollFlags::POLLIN | poll::PollFlags::POLLOUT,
-    };
-
+    let events = access.into();
     loop {
         let mut poll_fd = poll::PollFd::new(fd.as_fd(), events);
 
