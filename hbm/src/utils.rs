@@ -68,10 +68,8 @@ pub fn poll(fd: impl AsFd, access: Access) -> Result<()> {
 
                 return Ok(());
             }
+            Err(nix::Error::EINTR) | Err(nix::Error::EAGAIN) => continue,
             Err(err) => {
-                if err == nix::Error::EINTR || err == nix::Error::EAGAIN {
-                    continue;
-                }
                 return Error::errno(err);
             }
         }
