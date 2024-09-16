@@ -425,6 +425,105 @@ mod drm {
 
         Ok(primary_iter)
     }
+
+    #[cfg(test)]
+    fn align(val: usize, align: usize) -> usize {
+        assert!(align > 0 && align & (align - 1) == 0);
+        (val + align - 1) & !(align - 1)
+    }
+
+    #[test]
+    fn test_drm_parse_in_formats_blob() {
+        const EXPECTED_FORMATS: [u32; 8] = [1, 2, 3, 4, 5, 6, 7, 8];
+        const EXPECTED_MODS: [drm_format_modifier; 4] = [
+            drm_format_modifier {
+                formats: 0b111,
+                offset: 0,
+                pad: 0,
+                modifier: 10,
+            },
+            drm_format_modifier {
+                formats: 0b101,
+                offset: 0,
+                pad: 0,
+                modifier: 20,
+            },
+            drm_format_modifier {
+                formats: 0b100,
+                offset: 0,
+                pad: 0,
+                modifier: 30,
+            },
+            drm_format_modifier {
+                formats: 0b101,
+                offset: 4,
+                pad: 0,
+                modifier: 40,
+            },
+        ];
+        const EXPECTED_PAIRS: [(u64, u32); 8] = [
+            (10, 1),
+            (10, 2),
+            (10, 3),
+            (20, 1),
+            (20, 3),
+            (30, 3),
+            (40, 5),
+            (40, 7),
+        ];
+
+        // align region sizes to 8-bytes to satisfy slice::from_raw_parts_mut reqs
+        let hdr_size = align(mem::size_of::<drm_format_modifier_blob>(), 8);
+        let fmt_count = EXPECTED_FORMATS.len();
+        let fmt_region_size = align(fmt_count * mem::size_of::<u32>(), 8);
+        let mod_count = EXPECTED_MODS.len();
+        let mod_region_size = align(mod_count * mem::size_of::<drm_format_modifier>(), 8);
+        let blob_size = hdr_size + fmt_region_size + mod_region_size;
+
+        let buf = vec![0; blob_size];
+        let blob = buf.as_ptr() as *mut u8;
+
+        //
+        // PACK BLOB BUFFER
+        //
+        // SAFETY: blob is sufficiently sized to contain the region
+        let hdr = unsafe { &mut *(blob as *mut drm_format_modifier_blob) };
+        hdr.version = 1;
+        hdr.flags = 0;
+        hdr.count_formats = fmt_count as u32;
+        hdr.formats_offset = hdr_size as u32;
+        hdr.count_modifiers = mod_count as u32;
+        hdr.modifiers_offset = (hdr_size + fmt_region_size) as u32;
+
+        // SAFETY: blob is sufficiently sized for pointer offset
+        let fmt_ptr = unsafe { blob.add(hdr_size) as *mut u32 };
+        // SAFETY: pointer is valid and sufficiently aligned, len is within blob
+        let fmts: &mut [u32] = unsafe { std::slice::from_raw_parts_mut(fmt_ptr, fmt_count) };
+        for (i, fmt) in EXPECTED_FORMATS.iter().enumerate() {
+            fmts[i] = *fmt;
+        }
+
+        // SAFETY: blob is sufficiently sized for pointer offset
+        let mod_ptr = unsafe { blob.add(hdr_size + fmt_region_size) as *mut drm_format_modifier };
+        // SAFETY: pointer is valid and sufficiently aligned, len is within blob
+        let mods: &mut [drm_format_modifier] =
+            unsafe { std::slice::from_raw_parts_mut(mod_ptr, mod_count) };
+        for (i, modifier) in EXPECTED_MODS.iter().enumerate() {
+            mods[i] = drm_format_modifier {
+                formats: modifier.formats,
+                offset: modifier.offset,
+                pad: modifier.pad,
+                modifier: modifier.modifier,
+            };
+        }
+        let parsed = drm_parse_in_formats_blob(&buf).expect("failed to parse formats blob");
+
+        // compare to expected output, assuming identical iteration ordering
+        for (i, x) in parsed.enumerate() {
+            println!("{i}: ({}, {})", x.0, x.1);
+            assert!(x == EXPECTED_PAIRS[i]);
+        }
+    }
 }
 
 #[cfg(feature = "drm")]
