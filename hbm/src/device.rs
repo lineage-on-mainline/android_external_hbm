@@ -70,7 +70,7 @@ impl Device {
 
     fn multi_classify(&self, desc: Description, usage: &[Usage]) -> Result<Class> {
         // call classify from all backends and merge the results
-        let mut max_extent = Extent::max(desc.is_buffer());
+        let mut max_extent = Extent::max_supported(&desc);
         let mut mods: Option<HashSet<Modifier>> = None;
         let mut con = Constraint::new();
         let mut required_idx = None;

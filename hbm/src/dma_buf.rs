@@ -64,7 +64,7 @@ pub fn classify(desc: Description, usage: Usage) -> Result<Class> {
 
     let mut class = Class::new(desc)
         .usage(usage)
-        .max_extent(Extent::max(desc.is_buffer()));
+        .max_extent(Extent::max_supported(&desc));
     if desc.is_buffer() {
         class = class.modifiers(vec![desc.modifier]);
     }

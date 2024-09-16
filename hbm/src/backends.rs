@@ -143,7 +143,7 @@ impl Class {
             flags: desc.flags,
             format: desc.format,
             usage: Usage::Unused,
-            max_extent: Extent::max(desc.is_buffer()),
+            max_extent: Extent::max_supported(&desc),
             modifiers: Vec::new(),
             constraint: None,
             unknown_constraint: false,
@@ -216,11 +216,16 @@ pub enum Extent {
 }
 
 impl Extent {
-    pub(crate) fn max(is_buf: bool) -> Self {
-        if is_buf {
-            Self::Buffer(u64::MAX)
+    /// maximumum extent for a buffer resource
+    pub(crate) const BUFFER_MAX: Self = Self::Buffer(u64::MAX);
+    /// maximum extent for an image resource
+    pub(crate) const IMAGE_MAX: Self = Self::Image(u32::MAX, u32::MAX);
+
+    pub(crate) fn max_supported(desc: &Description) -> Self {
+        if desc.is_buffer() {
+            Extent::BUFFER_MAX
         } else {
-            Self::Image(u32::MAX, u32::MAX)
+            Extent::IMAGE_MAX
         }
     }
 
@@ -745,12 +750,16 @@ mod tests {
             assert_eq!(extent.height(), h);
         }
 
-        let buf_max = Extent::max(true);
-        assert_eq!(buf_max.size(), u64::MAX);
+        let buf_desc = Description::new().format(formats::INVALID);
+        assert!(buf_desc.is_buffer());
+        let buf_max = Extent::max_supported(&buf_desc);
+        assert_eq!(buf_max.size(), Extent::BUFFER_MAX.size());
 
-        let img_max = Extent::max(false);
-        assert_eq!(img_max.width(), u32::MAX);
-        assert_eq!(img_max.height(), u32::MAX);
+        let img_desc = Description::new().format(formats::R8);
+        assert!(!img_desc.is_buffer());
+        let img_max = Extent::max_supported(&img_desc);
+        assert_eq!(img_max.width(), Extent::IMAGE_MAX.width());
+        assert_eq!(img_max.height(), Extent::IMAGE_MAX.height());
 
         assert!(Extent::Buffer(0).is_empty());
         assert!(!Extent::Buffer(1).is_empty());
