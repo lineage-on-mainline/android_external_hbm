@@ -13,7 +13,7 @@ use std::path::Path;
 use std::{num, slice};
 
 pub fn makedev(major: u64, minor: u64) -> u64 {
-    sys::stat::makedev(major, minor) as u64
+    libc::makedev(major as _, minor as _) as u64
 }
 
 pub fn open(path: impl AsRef<Path>) -> Result<OwnedFd> {
