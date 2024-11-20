@@ -588,7 +588,7 @@ impl CDevice {
 #[no_mangle]
 pub unsafe extern "C" fn hbm_device_create(dev: libc::dev_t, debug: bool) -> *mut hbm_device {
     let Ok(backend) = hbm::vulkan::Builder::new()
-        .device_id(dev)
+        .device_id(dev as _)
         .debug(debug)
         .build()
         .log_err("create backend")
