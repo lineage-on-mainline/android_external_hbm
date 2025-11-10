@@ -15,6 +15,7 @@ rust_library {
         "libash_rust",
         "libbitflags",
         "libdrm_rust",
+        "liblibc",
         "liblog_rust",
         "libnix",
         "libthiserror",
