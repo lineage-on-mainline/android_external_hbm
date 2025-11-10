@@ -38,6 +38,30 @@ rust_binary {
     vintf_fragments: ["hbm-gralloc/data/android.hardware.graphics.allocator-service.hbm.xml"],
 }
 
+rust_bindgen {
+    name: "libimapper_stablec_bindgen",
+    crate_name: "imapper_stablec_bindgen",
+    wrapper_src: "imapper_stablec_bindgen/imapper_stablec_bindgen.hpp",
+    source_stem: "bindings",
+    bindgen_flags: [
+        "--default-enum-style=rust",
+        "--ctypes-prefix=std::ffi",
+        "--allowlist-type=AIMapper",
+    ],
+    shared_libs: [
+        "libcutils",
+    ],
+    header_libs: [
+        "libarect_headers",
+        "libimapper_stablec",
+    ],
+    vendor_available: true,
+    apex_available: [
+        "//apex_available:anyapex",
+        "//apex_available:platform",
+    ],
+}
+
 rust_ffi_static {
     name: "libhbm_gralloc_mapper",
     crate_name: "hbm_gralloc",
