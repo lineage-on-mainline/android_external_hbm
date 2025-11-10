@@ -29,8 +29,8 @@ rust_binary {
     defaults: [
         "hbm_defaults",
     ],
-    // TODO update hardware/interfaces/graphics/allocator/aidl/Android.bp
     rustlibs: [
+        "android.hardware.graphics.allocator-V2-rust",
         "libhbm",
     ],
     relative_install_path: "hw",
