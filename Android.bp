@@ -8,6 +8,10 @@ rust_library {
     name: "libhbm",
     crate_name: "hbm",
     crate_root: "hbm/src/lib.rs",
+    features: [
+        //"ash",
+        "drm",
+    ],
     defaults: [
         "hbm_defaults",
     ],
