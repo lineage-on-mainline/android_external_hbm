@@ -35,7 +35,10 @@ rust_binary {
     ],
     rustlibs: [
         "android.hardware.graphics.allocator-V2-rust",
+        "libbinder_rs",
         "libhbm",
+        "liblog_rust",
+        "liblogger",
     ],
     relative_install_path: "hw",
     init_rc: ["hbm-gralloc/data/android.hardware.graphics.allocator-service.hbm.rc"],

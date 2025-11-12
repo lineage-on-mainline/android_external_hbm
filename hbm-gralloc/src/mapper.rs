@@ -186,6 +186,9 @@ unsafe extern "C" fn get_reserved_region(
 }
 
 #[no_mangle]
+pub static ANDROID_HAL_MAPPER_VERSION: u32 = AIMapper_Version::AIMAPPER_VERSION_5 as u32;
+
+#[no_mangle]
 pub unsafe extern "C" fn AIMapper_loadIMapper(
     out_implementation: *mut *mut AIMapper,
 ) -> AIMapper_Error {
